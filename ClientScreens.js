@@ -106,7 +106,7 @@ export default function ClientScreens() {
     return foundUser?.photoURL || defaultPhoto || 'https://via.placeholder.com/150';
   };
 
-  // Notifikationer logik
+  // Notifikationer logik med øjeblikkelig fjernelse ved tryk
   const getNotifications = () => {
     if (!user) return [];
     const prefs = userData?.notifPreferences || { news: true, away: true, tipspil: true, forum: true };
@@ -120,11 +120,13 @@ export default function ClientScreens() {
         notifs.push({
           id: 'news_' + target.id,
           text: `📰 Nyhed: "${target.title}"`,
-          onPress: () => {
+          onPress: async () => {
             setShowNotifDropdown(false);
-            db.collection('users').doc(user.uid).set({
+            const updatedSeenNews = [...seenNews, target.id];
+            await db.collection('users').doc(user.uid).set({
               seenNewsIds: firebase.firestore.FieldValue.arrayUnion(target.id)
             }, { merge: true }).catch(()=>{});
+            setUserData(prev => ({ ...prev, seenNewsIds: updatedSeenNews }));
             setSelectedNews(target);
             setCurrentScreen('newsDetail');
           }
@@ -140,11 +142,13 @@ export default function ClientScreens() {
         notifs.push({
           id: 'away_' + target.id,
           text: `🚌 Ny away info: (${target.opponent || 'Udebane'})`,
-          onPress: () => {
+          onPress: async () => {
             setShowNotifDropdown(false);
-            db.collection('users').doc(user.uid).set({
+            const updatedSeenAway = [...seenAway, target.id];
+            await db.collection('users').doc(user.uid).set({
               seenAwayIds: firebase.firestore.FieldValue.arrayUnion(target.id)
             }, { merge: true }).catch(()=>{});
+            setUserData(prev => ({ ...prev, seenAwayIds: updatedSeenAway }));
             setSelectedAwayInfo(target);
             setCurrentScreen('awayInfo');
           }
@@ -155,15 +159,17 @@ export default function ClientScreens() {
     if (prefs.tipspil) {
       const lastSeenTipspil = userData?.lastSeenTipspil || 0;
       const finishedMatches = matchesList.filter(m => m.finalScore && (m.createdAt?.toMillis ? m.createdAt.toMillis() > lastSeenTipspil : true));
-      if (finishedMatches.length > 0 && (userData?.points || 0) > 0) {
+      if (finishedMatches.length > 0 && (userData?.points || 0) > 0 && lastSeenTipspil === 0) {
         notifs.push({
           id: 'tipspil_pts',
           text: `⚽ Tipspil opdateret med nye point!`,
-          onPress: () => {
+          onPress: async () => {
             setShowNotifDropdown(false);
-            db.collection('users').doc(user.uid).set({
-              lastSeenTipspil: Date.now()
+            const now = Date.now();
+            await db.collection('users').doc(user.uid).set({
+              lastSeenTipspil: now
             }, { merge: true }).catch(()=>{});
+            setUserData(prev => ({ ...prev, lastSeenTipspil: now }));
             setCurrentScreen('tipspil');
           }
         });
@@ -179,11 +185,13 @@ export default function ClientScreens() {
         notifs.push({
           id: 'forum_' + target.id,
           text: `💬 Nyt svar i din debat: "${target.title}"`,
-          onPress: () => {
+          onPress: async () => {
             setShowNotifDropdown(false);
-            db.collection('users').doc(user.uid).set({
+            const updatedSeenThreads = [...seenThreads, target.id];
+            await db.collection('users').doc(user.uid).set({
               seenForumThreadIds: firebase.firestore.FieldValue.arrayUnion(target.id)
             }, { merge: true }).catch(()=>{});
+            setUserData(prev => ({ ...prev, seenForumThreadIds: updatedSeenThreads }));
             setSelectedCategory(forumCategories.find(c => c.id === target.categoryId) || forumCategories[0]);
             setSelectedThread(target);
             setCurrentScreen('forum');
@@ -737,7 +745,7 @@ export default function ClientScreens() {
                 <ScrollView style={{maxHeight: 350, width: '100%', marginBottom: 15}}>
                   <Text style={{fontSize: 13, color: '#333', lineHeight: 20, marginBottom: 10}}>Grundlæggende Point:{'\n'}• Rigtig vinder eller uafgjort (1X2): <Text style={{fontWeight: 'bold'}}>1 point</Text>.{'\n'}• Helt præcist kampresultat (Målscore): <Text style={{fontWeight: 'bold'}}>3 point</Text>.</Text>
                   <Text style={{fontSize: 13, color: '#333', lineHeight: 20, marginBottom: 10}}>Dobbelt Op (⭐):{'\n'}• I hver divisionsrunde kan du vælge én Dobbelt Op-kamp.{'\n'}• Dine point for netop dén kamp ganges med 2!{'\n'}• Vigtigt: Du kan ikke ændre Dobbelt Op, når kampen er gået i gang.{'\n'}• <Text style={{color: '#E30613'}}>Gælder IKKE i pokalkampe.</Text></Text>
-                  <Text style={{fontSize: 13, color: '#333', lineHeight: 20}}>Låsning og Statistik:{'\n'}• Gæt og Dobbelt Op låses 5 minutter før kampstart.{'\n'}• Træfsikkerhed udregnes ud fra, hvor ofte du rammer mindst det rigtige tegn (1X2). Kampe du ikke når at gætte på, tæller ikke med som forbi-skud.</Text>
+                  <Text style={{fontSize: 13, color: '#333', lineHeight: 20}}>Låsning og Statistik:{'\n'}• Gæt og Dobbelt Op låses 5 minutter før kampstart.{'\n'}• Træfsikkerhed udregnes ud fra, hvor ofte du rammer mindst det rigtige tegn (1X2). Kampe du ikke nå at gætte på, tæller ikke med som forbi-skud.</Text>
                 </ScrollView>
                 <TouchableOpacity style={[styles.primaryButton, {width: '100%'}]} onPress={() => setShowRulesModal(false)}><Text style={styles.primaryButtonText}>FORSTÅET</Text></TouchableOpacity>
               </View>
@@ -1018,7 +1026,7 @@ export default function ClientScreens() {
               <View style={styles.detailCard}>
                  <Text style={{fontSize: 12, fontWeight: 'bold', color: '#C5A059', textAlign: 'center', marginBottom: 5}}>{formatDanishDate(m?.matchDate)}</Text>
                  <Text style={{fontSize: 22, fontWeight: '900', color: '#12352A', textAlign: 'center', marginBottom: 15}}>{m ? `${m.homeTeam} vs AB` : (selectedAwayInfo.opponent ? `${selectedAwayInfo.opponent} vs AB` : 'Udebane')}</Text>
-                 <Text style={{fontSize: 16, color: '#333', lineHeight: 26}}>{selectedAwayInfo.infoText}</Text>
+                 <Text style={{fontSize: 16, color: '#333', lineHeight: 26}}>{selectedAwayInfo.infoText || selectedAwayInfo.text || 'Ingen information tilgængelig.'}</Text>
               </View>
             </ScrollView>
          </View>
@@ -1039,8 +1047,9 @@ export default function ClientScreens() {
             <View style={{backgroundColor: '#FFFFFF', padding: 30, borderRadius: 12, alignItems: 'center', marginTop: 20, borderWidth: 1, borderColor: '#C5A059'}}><Text style={{fontSize: 16, fontWeight: 'bold', color: '#12352A', textAlign: 'center'}}>Ingen arrangerede ture planlagt endnu.</Text></View>
           ) : (
             sortedAwayInfo.map(info => (
-              <TouchableOpacity key={info.id} style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#C5A059', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}} onPress={() => {
-                db.collection('users').doc(user.uid).set({ seenAwayIds: firebase.firestore.FieldValue.arrayUnion(info.id) }, { merge: true }).catch(()=>{});
+              <TouchableOpacity key={info.id} style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#C5A059', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}} onPress={async () => {
+                await db.collection('users').doc(user.uid).set({ seenAwayIds: firebase.firestore.FieldValue.arrayUnion(info.id) }, { merge: true }).catch(()=>{});
+                setUserData(prev => ({ ...prev, seenAwayIds: [...(prev?.seenAwayIds || []), info.id] }));
                 setSelectedAwayInfo(info);
               }}>
                 <View style={{flex: 1}}>
@@ -1092,7 +1101,7 @@ export default function ClientScreens() {
           })}
           {user ? (
             <View style={styles.commentInputContainer}>
-              <TextInput style={styles.commentInput} placeholder="Skriv en kommentar..." placeholderTextColor="#888" value={newNewsComment} onChangeText={setNewNewsComment} />
+              <TextInput style={styles.commentInput} placeholder="Skriv en kommentar..." placeholderTextColor="#888" value={newNewsComment} onChangeText={newNewsComment} />
               <TouchableOpacity style={styles.commentSendBtn} onPress={async () => { if (!newNewsComment.trim() || !selectedNews) return; await db.collection('news').doc(selectedNews.id).collection('comments').add({ content: newNewsComment, authorId: user.uid, authorName: userData?.username || 'Fan', authorPhoto: userData?.photoURL || '', authorRole: isSuperAdmin ? 'Super Admin' : (userData?.role || 'Alm. Bruger'), authorFractions: userData?.hideFractions ? [] : (userData?.fractions || []), authorSignature: userData?.signature || '', createdAt: firebase.firestore.FieldValue.serverTimestamp() }); setNewNewsComment(''); }}><Text style={{color: '#FFFFFF', fontWeight: 'bold'}}>SEND</Text></TouchableOpacity>
             </View>
           ) : <Text style={{color: '#666', fontStyle: 'italic', textAlign: 'center', marginVertical: 15}}>Log ind for at kommentere.</Text>}
