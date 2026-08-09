@@ -41,11 +41,15 @@ export default function ClientScreens() {
   const [hideFractions, setHideFractions] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Notifikationsindstillinger state til edit profile
+  // Notifikationsindstillinger state
   const [notifNews, setNotifNews] = useState(userData?.notifPreferences?.news ?? true);
   const [notifAway, setNotifAway] = useState(userData?.notifPreferences?.away ?? true);
   const [notifTipspil, setNotifTipspil] = useState(userData?.notifPreferences?.tipspil ?? true);
   const [notifForum, setNotifForum] = useState(userData?.notifPreferences?.forum ?? true);
+
+  // Notifikationsbar rotation og dropdown state
+  const [currentNotifIndex, setCurrentNotifIndex] = useState(0);
+  const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
   const [selectedRound, setSelectedRound] = useState('Runde 1');
   const [showRulesModal, setShowRulesModal] = useState(false);
@@ -80,75 +84,86 @@ export default function ClientScreens() {
     return foundUser?.photoURL || defaultPhoto || 'https://via.placeholder.com/150';
   };
 
-  // Generer interaktive notifikationer baseret på læst-status og brugerens præferencer
+  // Notifikationer logik
   const getNotifications = () => {
     if (!user) return [];
     const prefs = userData?.notifPreferences || { news: true, away: true, tipspil: true, forum: true };
     let notifs = [];
 
-    // 1. Nye nyheder
     if (prefs.news && newsList.length > 0) {
-      const lastSeen = userData?.lastSeenNews?.toMillis ? userData.lastSeenNews.toMillis() : (userData?.lastSeenNews || 0);
-      const unreadNews = newsList.filter(n => n.createdAt?.toMillis ? n.createdAt.toMillis() > lastSeen : false);
+      const seenNews = userData?.seenNewsIds || [];
+      const unreadNews = newsList.filter(n => !seenNews.includes(n.id));
       if (unreadNews.length > 0) {
+        const target = unreadNews[0];
         notifs.push({
-          id: 'news_' + unreadNews[0].id,
-          text: `📰 Nyhed: "${unreadNews[0].title}"`,
-          onPress: async () => {
-            await db.collection('users').doc(user.uid).update({ lastSeenNews: firebase.firestore.FieldValue.serverTimestamp() });
-            setSelectedNews(unreadNews[0]);
+          id: 'news_' + target.id,
+          text: `📰 Nyhed: "${target.title}"`,
+          onPress: () => {
+            setShowNotifDropdown(false);
+            db.collection('users').doc(user.uid).set({
+              seenNewsIds: firebase.firestore.FieldValue.arrayUnion(target.id)
+            }, { merge: true }).catch(()=>{});
+            setSelectedNews(target);
             setCurrentScreen('newsDetail');
           }
         });
       }
     }
 
-    // 2. Nye Away Info ture
     if (prefs.away && canViewAwayInfo && awayInfoList.length > 0) {
-      const lastSeen = userData?.lastSeenAway?.toMillis ? userData.lastSeenAway.toMillis() : (userData?.lastSeenAway || 0);
-      const newAway = awayInfoList.filter(a => a.createdAt?.toMillis ? a.createdAt.toMillis() > lastSeen : false);
-      if (newAway.length > 0) {
+      const seenAway = userData?.seenAwayIds || [];
+      const unreadAway = awayInfoList.filter(a => !seenAway.includes(a.id));
+      if (unreadAway.length > 0) {
+        const target = unreadAway[0];
         notifs.push({
-          id: 'away_' + newAway[0].id,
-          text: `🚌 Ny away info tilgængelig (${newAway.length} tur(e))`,
-          onPress: async () => {
-            await db.collection('users').doc(user.uid).update({ lastSeenAway: firebase.firestore.FieldValue.serverTimestamp() });
-            setSelectedAwayInfo(newAway[0]);
+          id: 'away_' + target.id,
+          text: `🚌 Ny away info: (${target.opponent || 'Udebane'})`,
+          onPress: () => {
+            setShowNotifDropdown(false);
+            db.collection('users').doc(user.uid).set({
+              seenAwayIds: firebase.firestore.FieldValue.arrayUnion(target.id)
+            }, { merge: true }).catch(()=>{});
+            setSelectedAwayInfo(target);
             setCurrentScreen('awayInfo');
           }
         });
       }
     }
 
-    // 3. Tipspil point opdatering
-    if (prefs.tipspil && userData?.points > 0) {
-      const lastSeen = userData?.lastSeenTipspil?.toMillis ? userData.lastSeenTipspil.toMillis() : (userData?.lastSeenTipspil || 0);
-      const lastMatch = [...matchesList].reverse().find(m => m.finalScore);
-      if (lastMatch && lastMatch.createdAt?.toMillis && lastMatch.createdAt.toMillis() > lastSeen) {
+    if (prefs.tipspil) {
+      const lastSeenTipspil = userData?.lastSeenTipspil || 0;
+      const finishedMatches = matchesList.filter(m => m.finalScore && (m.createdAt?.toMillis ? m.createdAt.toMillis() > lastSeenTipspil : true));
+      if (finishedMatches.length > 0 && (userData?.points || 0) > 0) {
         notifs.push({
           id: 'tipspil_pts',
           text: `⚽ Tipspil opdateret med nye point!`,
-          onPress: async () => {
-            await db.collection('users').doc(user.uid).update({ lastSeenTipspil: firebase.firestore.FieldValue.serverTimestamp() });
+          onPress: () => {
+            setShowNotifDropdown(false);
+            db.collection('users').doc(user.uid).set({
+              lastSeenTipspil: Date.now()
+            }, { merge: true }).catch(()=>{});
             setCurrentScreen('tipspil');
           }
         });
       }
     }
 
-    // 4. Forum svar i egne tråde
     if (prefs.forum) {
-      const lastSeen = userData?.lastSeenForum?.toMillis ? userData.lastSeenForum.toMillis() : (userData?.lastSeenForum || 0);
+      const seenThreads = userData?.seenForumThreadIds || [];
       const myThreadIds = allThreads.filter(t => t.authorId === user.uid).map(t => t.id);
-      const unreadThreads = allThreads.filter(t => myThreadIds.includes(t.id) && (t.createdAt?.toMillis ? t.createdAt.toMillis() > lastSeen : false));
+      const unreadThreads = allThreads.filter(t => myThreadIds.includes(t.id) && !seenThreads.includes(t.id));
       if (unreadThreads.length > 0) {
+        const target = unreadThreads[0];
         notifs.push({
-          id: 'forum_reply',
-          text: `💬 Nyt svar eller aktivitet i dine forum-tråde`,
-          onPress: async () => {
-            await db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() });
-            setSelectedCategory(forumCategories.find(c => c.id === unreadThreads[0].categoryId) || forumCategories[0]);
-            setSelectedThread(unreadThreads[0]);
+          id: 'forum_' + target.id,
+          text: `💬 Nyt svar i din debat: "${target.title}"`,
+          onPress: () => {
+            setShowNotifDropdown(false);
+            db.collection('users').doc(user.uid).set({
+              seenForumThreadIds: firebase.firestore.FieldValue.arrayUnion(target.id)
+            }, { merge: true }).catch(()=>{});
+            setSelectedCategory(forumCategories.find(c => c.id === target.categoryId) || forumCategories[0]);
+            setSelectedThread(target);
             setCurrentScreen('forum');
           }
         });
@@ -158,6 +173,15 @@ export default function ClientScreens() {
     return notifs;
   };
   const activeNotifications = getNotifications();
+
+  // Automatisk rotation af notifikationer hvert 4. sekund
+  useEffect(() => {
+    if (activeNotifications.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentNotifIndex(prev => (prev + 1) % activeNotifications.length);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [activeNotifications.length]);
 
   const canAccessCategory = (cat) => {
     if (isAdmin || isEditor || isSuperAdmin) return true;
@@ -284,23 +308,44 @@ export default function ClientScreens() {
 
   const TopBarMenu = () => {
     const liveMyPhoto = user ? getLiveAuthorPhoto(user.uid, userData?.photoURL || user?.photoURL) : '';
+    const safeNotifIndex = activeNotifications.length > 0 ? currentNotifIndex % activeNotifications.length : 0;
     return (
       <>
         <TouchableOpacity onPress={() => setCurrentScreen('home')} style={styles.headerBannerContainer} activeOpacity={0.9}>
           <Image source={{ uri: 'https://i.imgur.com/fpRHIje.png' }} style={styles.headerImageBanner} resizeMode="cover" />
         </TouchableOpacity>
 
-        {/* Notifikationsbar */}
+        {/* Notifikationsbar med enkeltvis rullende notifikation og dropdown pil */}
         <View style={{backgroundColor: '#12352A', paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#C5A059'}}>
-          <Text style={{fontSize: 10, fontWeight: '900', color: '#C5A059', marginBottom: 3, textTransform: 'uppercase'}}>🔔 Notifikationer</Text>
-          {activeNotifications.length === 0 ? (
-            <Text style={{fontSize: 11, color: '#fff', fontStyle: 'italic'}}>Ingen nye notifikationer</Text>
-          ) : (
-            activeNotifications.map(n => (
-              <TouchableOpacity key={n.id} onPress={n.onPress} style={{paddingVertical: 3}}>
-                <Text style={{fontSize: 12, color: '#C5A059', fontWeight: 'bold'}}>• {n.text} ➔</Text>
+          <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
+            <View style={{flex: 1}}>
+              <Text style={{fontSize: 10, fontWeight: '900', color: '#C5A059', marginBottom: 2, textTransform: 'uppercase'}}>🔔 Notifikationer</Text>
+              {activeNotifications.length === 0 ? (
+                <Text style={{fontSize: 11, color: '#fff', fontStyle: 'italic'}}>Ingen nye notifikationer</Text>
+              ) : (
+                <TouchableOpacity onPress={activeNotifications[safeNotifIndex]?.onPress} style={{paddingVertical: 2}}>
+                  <Text style={{fontSize: 12, color: '#C5A059', fontWeight: 'bold'}} numberOfLines={1}>
+                    • {activeNotifications[safeNotifIndex]?.text} ➔
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+            {activeNotifications.length > 0 && (
+              <TouchableOpacity onPress={() => setShowNotifDropdown(!showNotifDropdown)} style={{paddingLeft: 10, paddingVertical: 4}}>
+                <Text style={{fontSize: 14, color: '#C5A059', fontWeight: 'bold'}}>{showNotifDropdown ? '▲' : '▼'}</Text>
               </TouchableOpacity>
-            ))
+            )}
+          </View>
+
+          {/* Dropdown menu med alle notifikationer */}
+          {showNotifDropdown && activeNotifications.length > 0 && (
+            <View style={{marginTop: 8, borderTopWidth: 1, borderTopColor: '#C5A059', paddingTop: 6}}>
+              {activeNotifications.map(n => (
+                <TouchableOpacity key={n.id} onPress={n.onPress} style={{paddingVertical: 4}}>
+                  <Text style={{fontSize: 12, color: '#fff'}} numberOfLines={1}>• {n.text} ➔</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           )}
         </View>
 
@@ -458,7 +503,7 @@ export default function ClientScreens() {
     // Opdater lastSeenTipspil når man går ind i tipspil
     useEffect(() => {
       if (user) {
-        db.collection('users').doc(user.uid).update({ lastSeenTipspil: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+        db.collection('users').doc(user.uid).update({ lastSeenTipspil: Date.now() }).catch(()=>{});
       }
     }, []);
 
@@ -624,13 +669,6 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'forum') {
-    // Opdater lastSeenForum når man går ind i forum
-    useEffect(() => {
-      if (user) {
-        db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-      }
-    }, []);
-
     if (selectedThread) {
       const threadLivePhoto = getLiveAuthorPhoto(selectedThread.authorId, selectedThread.authorPhoto);
       return (
@@ -682,7 +720,10 @@ export default function ClientScreens() {
             {user ? (
               ctx.appSettings.forumLocked && !isAdmin ? (<Text style={{color: '#E30613', fontStyle: 'italic', textAlign: 'center', marginVertical: 15}}>Forummet er midlertidigt låst for nye indlæg.</Text>) : (
                 <View style={styles.commentInputContainer}>
-                  <TextInput style={styles.commentInput} placeholder="Skriv et svar..." placeholderTextColor="#888" value={newReplyContent} onChangeText={setNewReplyContent} />
+                  <TextInput style={styles.commentInput} placeholder="Skriv et svar..." placeholderTextColor="#888" value={newReplyContent} onChangeText={newReplyContent => {
+                    db.collection('users').doc(user.uid).set({ seenForumThreadIds: firebase.firestore.FieldValue.arrayUnion(selectedThread.id) }, { merge: true }).catch(()=>{});
+                    setNewReplyContent(newReplyContent);
+                  }} />
                   <TouchableOpacity style={styles.commentSendBtn} onPress={async () => { if (!newReplyContent.trim()) return; await db.collection('forum_threads').doc(selectedThread.id).collection('replies').add({ content: newReplyContent, authorId: user.uid, authorName: userData?.username || 'Fan', authorPhoto: userData?.photoURL || '', authorRole: isSuperAdmin ? 'Super Admin' : (userData?.role || 'Alm. Bruger'), authorFractions: userData?.hideFractions ? [] : (userData?.fractions || []), authorSignature: userData?.signature || '', createdAt: firebase.firestore.FieldValue.serverTimestamp() }); setNewReplyContent(''); }}><Text style={{color: '#FFFFFF', fontWeight: 'bold'}}>SEND</Text></TouchableOpacity>
                 </View>
               )
@@ -735,7 +776,12 @@ export default function ClientScreens() {
             )}
 
             {categoryThreads.map((t) => (
-              <TouchableOpacity key={t.id} style={styles.newsCard} onPress={() => setSelectedThread(t)}>
+              <TouchableOpacity key={t.id} style={styles.newsCard} onPress={() => {
+                if (user) {
+                  db.collection('users').doc(user.uid).set({ seenForumThreadIds: firebase.firestore.FieldValue.arrayUnion(t.id) }, { merge: true }).catch(()=>{});
+                }
+                setSelectedThread(t);
+              }}>
                 <View style={{padding: 15}}>
                   <Text style={{fontSize: 11, color: '#C5A059', fontWeight: 'bold', marginBottom: 4}}>{t.authorName} ({t.authorRole})</Text>
                   <Text style={styles.newsTitle}>{t.title}</Text>
@@ -852,13 +898,6 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'awayInfo') {
-    // Opdater lastSeenAway når man går ind i awayInfo
-    useEffect(() => {
-      if (user) {
-        db.collection('users').doc(user.uid).update({ lastSeenAway: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-      }
-    }, []);
-
     if (!canViewAwayInfo) {
       return (
         <View style={{flex: 1}}>
@@ -876,7 +915,7 @@ export default function ClientScreens() {
     }
 
     if (selectedAwayInfo) {
-       const m = selectedAwayInfo.matchDetails;
+       const m = selectedAwayInfo.matchDetails || matchesList.find(x => x.id === selectedAwayInfo.matchId || x.homeTeam === selectedAwayInfo.opponent) || { homeTeam: selectedAwayInfo.opponent || 'Udebane', matchDate: new Date() };
        return (
          <View style={{flex: 1}}>
             <TopBarMenu />
@@ -906,7 +945,10 @@ export default function ClientScreens() {
             <View style={{backgroundColor: '#FFFFFF', padding: 30, borderRadius: 12, alignItems: 'center', marginTop: 20, borderWidth: 1, borderColor: '#C5A059'}}><Text style={{fontSize: 16, fontWeight: 'bold', color: '#12352A', textAlign: 'center'}}>Ingen arrangerede ture planlagt endnu.</Text></View>
           ) : (
             sortedAwayInfo.map(info => (
-              <TouchableOpacity key={info.id} style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#C5A059', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}} onPress={() => setSelectedAwayInfo(info)}>
+              <TouchableOpacity key={info.id} style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#C5A059', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}} onPress={() => {
+                db.collection('users').doc(user.uid).set({ seenAwayIds: firebase.firestore.FieldValue.arrayUnion(info.id) }, { merge: true }).catch(()=>{});
+                setSelectedAwayInfo(info);
+              }}>
                 <View style={{flex: 1}}>
                   <Text style={{fontSize: 10, fontWeight: 'bold', color: '#C5A059', marginBottom: 2}}>{formatDanishDate(info.matchDetails.matchDate)}</Text>
                   <Text style={{fontSize: 16, fontWeight: '900', color: '#12352A'}}>{info.matchDetails.homeTeam} vs AB</Text>
@@ -922,13 +964,6 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'newsDetail') {
-    // Opdater lastSeenNews når man kigger på enhedens nyhed
-    useEffect(() => {
-      if (user) {
-        db.collection('users').doc(user.uid).update({ lastSeenNews: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-      }
-    }, []);
-
     return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
         <ScrollView contentContainerStyle={styles.detailContainer}>
