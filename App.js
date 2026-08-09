@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, StatusBar, Alert, View, TouchableOpacity, Text, Platform } from 'react-native';
+import { SafeAreaView, StatusBar, Alert, View, TouchableOpacity, Text, Modal } from 'react-native';
 import { AppContext } from './AppContext';
 import firebase from 'firebase';
 import { auth, db } from './FirebaseConfig';
@@ -8,7 +8,7 @@ import { INITIAL_TEAM_DB } from './teamDatabase';
 
 import ClientScreens from './ClientScreens';
 import AdminScreens from './AdminScreens';
-import { Video, Audio, ResizeMode } from 'expo-av';
+import { Video, Audio } from 'expo-av';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -38,6 +38,10 @@ export default function App() {
   
   const [viewingProfileUser, setViewingProfileUser] = useState(null);
   const [upcomingFilter, setUpcomingFilter] = useState('All');
+
+  // Custom App Alert Modal State
+  const [customAlert, setCustomAlert] = useState({ visible: false, title: '', message: '', onConfirm: null });
+  const showAlert = (title, message, onConfirm = null) => setCustomAlert({ visible: true, title, message, onConfirm });
 
   useEffect(() => {
     const setupAudio = async () => {
@@ -84,8 +88,8 @@ export default function App() {
     
     db.collection('forum_categories').onSnapshot(async (snap) => {
       if (snap.empty) {
-        const defaults = [{ name: 'AB Generelt', desc: 'Alt om Akademisk Boldklub' }, { name: 'Kamp tråde', desc: 'Diskussion før og efter kampene' }];
-        for (let d of defaults) await db.collection('forum_categories').add({ name: d.name, description: d.desc, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+        const defaults = [{ name: 'AB Generelt', description: 'Alt om Akademisk Boldklub', allowedRoles: [] }, { name: 'Kamp tråde', description: 'Diskussion før og efter kampene', allowedRoles: [] }];
+        for (let d of defaults) await db.collection('forum_categories').add({ ...d, createdAt: firebase.firestore.FieldValue.serverTimestamp() });
       } else setForumCategories(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
@@ -160,7 +164,7 @@ export default function App() {
   const upcomingMatchesToDisplay = getUpcomingMatches();
 
   const handleManualRefresh = () => {
-    Alert.alert("Opdateret", "Sidste nye data er hentet!");
+    showAlert("Genindlæst", "Sidste nye data er hentet fra serveren!");
   };
 
   const logActivity = async (category, message, authorName) => {
@@ -172,7 +176,7 @@ export default function App() {
     menuOpen, setMenuOpen, newsList, rssNews, matchesList, leaderboard, usersList, auditLogs, songsList,
     pendingSongs, allFractions, awayInfoList, forumCategories, allThreads, rssFeedsList, customTeams,
     userPredictions, setUserPredictions, viewingProfileUser, setViewingProfileUser, upcomingFilter, setUpcomingFilter,
-    formatDanishDate, getTeamStyle, getTeamLogo, getStadium, isMatchLocked, nextMatch, upcomingMatchesToDisplay, handleManualRefresh, logActivity
+    formatDanishDate, getTeamStyle, getTeamLogo, getStadium, isMatchLocked, nextMatch, upcomingMatchesToDisplay, handleManualRefresh, logActivity, showAlert
   };
 
   if (showSplash) {
@@ -180,8 +184,6 @@ export default function App() {
       <SafeAreaView style={[styles.container, { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#12352A' }]}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
         <TouchableOpacity style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', padding: 15 }} activeOpacity={1} onPress={() => setShowSplash(false)}>
-          
-          {/* PLATFORM-AFHÆNGIG LØSNING: Bruger rent HTML-videoelement på nettet, så objectFit: contain tvinges igennem uden zoom */}
           <View style={{ width: '80%', maxWidth: 300, aspectRatio: 9/16, justifyContent: 'center', alignItems: 'center', borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: '#C5A059', backgroundColor: '#000', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.6, shadowRadius: 15, elevation: 12 }}>
             {Platform.OS === 'web' ? (
               <video
@@ -196,7 +198,7 @@ export default function App() {
               <Video 
                 source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
                 style={{ width: '100%', height: '100%' }} 
-                resizeMode={ResizeMode.CONTAIN} 
+                resizeMode="contain" 
                 shouldPlay={true} 
                 isMuted={isVideoMuted}
                 isLooping={false} 
@@ -204,11 +206,7 @@ export default function App() {
               />
             )}
           </View>
-
-          <TouchableOpacity 
-            onPress={() => setIsVideoMuted(!isVideoMuted)} 
-            style={{ marginTop: 20, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#0B221B', borderRadius: 20, borderWidth: 1, borderColor: '#C5A059' }}
-          >
+          <TouchableOpacity onPress={() => setIsVideoMuted(!isVideoMuted)} style={{ marginTop: 20, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#0B221B', borderRadius: 20, borderWidth: 1, borderColor: '#C5A059' }}>
             <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{isVideoMuted ? '🔇 Tænd Lyd' : '🔊 Sluk Lyd'}</Text>
           </TouchableOpacity>
           <Text style={{ color: '#C5A059', marginTop: 15, fontWeight: 'bold', letterSpacing: 2, textAlign: 'center', fontSize: 13 }}>TRYK HER FOR AT STARTE APPEN</Text>
@@ -224,6 +222,23 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#12352A" />
         {isAdminScreen ? <AdminScreens /> : <ClientScreens />}
+
+        {/* Global Custom Alert Modal */}
+        <Modal visible={customAlert.visible} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContainer, {maxWidth: 320, borderWidth: 2, borderColor: '#C5A059'}]}>
+              <Text style={{fontSize: 18, fontWeight: '900', color: '#12352A', marginBottom: 10, textAlign: 'center'}}>AB FAN</Text>
+              <Text style={{fontSize: 14, color: '#333', textAlign: 'center', marginBottom: 20, lineHeight: 20}}>{customAlert.message}</Text>
+              <TouchableOpacity style={[styles.primaryButton, {width: '100%', marginTop: 0}]} onPress={() => {
+                const cb = customAlert.onConfirm;
+                setCustomAlert({ visible: false, title: '', message: '', onConfirm: null });
+                if (cb) cb();
+              }}>
+                <Text style={styles.primaryButtonText}>OK</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     </AppContext.Provider>
   );
