@@ -200,7 +200,6 @@ export default function AdminScreens() {
   const [showSyncReviewModal, setShowSyncReviewModal] = useState(false);
   const [detectedSyncChanges, setDetectedSyncChanges] = useState([]);
 
-  // State til holdredigering
   const [editingTeamKey, setEditingTeamKey] = useState(null);
   const [editTeamDisplayName, setEditTeamDisplayName] = useState('');
   const [editTeamLeague, setEditTeamLeague] = useState('1. Division');
@@ -243,6 +242,7 @@ export default function AdminScreens() {
 
   const availableRoles = ['Alm. Bruger', 'Verificeret AB Fan', 'Redaktør', 'Admin', 'Super Admin'];
 
+  // Forbedret normalisering der fanger variationer som "AaB Fodbold" vs "AaB"
   const normalizeTeamName = (name) => {
     if (!name) return '';
     const n = name.toLowerCase().trim();
@@ -255,8 +255,8 @@ export default function AdminScreens() {
     if (n.includes('fredericia')) return 'fc fredericia';
     if (n.includes('hillerød')) return 'hillerød fodbold';
     if (n.includes('vejle')) return 'vejle boldklub';
-    if (n.includes('aalborg') || n === 'aab') return 'aab';
-    if (n.includes('aarhus') || n === 'aarhus fr') return 'aarhus fremad';
+    if (n.includes('aalborg') || n.includes('aab')) return 'aab';
+    if (n.includes('aarhus') || n.includes('fremad')) return 'aarhus fremad';
     if (n.includes('køge')) return 'hb køge';
     return n;
   };
@@ -411,7 +411,6 @@ export default function AdminScreens() {
     const sortedAdminRounds = Object.keys(adminMatchesByRound).sort((a, b) => Math.min(...adminMatchesByRound[a].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())) - Math.min(...adminMatchesByRound[b].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())));
     const hasMissingResults = (matchesInRound) => { const now = new Date().getTime(); return matchesInRound.some(match => !match.matchDate ? false : new Date(match.matchDate.replace(' ', 'T')).getTime() < now && match.finalScore === false); };
 
-    // Synkroniseringsfunktion, der automatisk fletter runder (f.eks. "Runde 1" -> "1. Runde") og fjerner dubletter
     const handleRunMatchSync = async () => {
       setIsSyncingMatches(true);
       try {
@@ -419,10 +418,9 @@ export default function AdminScreens() {
         let changes = [];
         let seenMatches = new Set();
 
-        // 1. Tjek for dubletter og flet runder automatisk
+        // 1. Tjek for dubletter og flet runder
         for (let m of matchesList) {
           const expectedRound = normalizeRoundName(m.round);
-          // Hvis runden hedder "Runde 1" i stedet for "1. Runde", opdaterer vi den med det samme
           if (m.round !== expectedRound && !m.round.toLowerCase().includes('pokal')) {
             await db.collection('matches').doc(m.id).update({ round: expectedRound });
           }
@@ -467,6 +465,10 @@ export default function AdminScreens() {
               }
             });
           } else {
+            // Opdater turneringstype hvis den mangler/er tom
+            if (!existing.tournament || existing.tournament !== official.tournament) {
+              db.collection('matches').doc(existing.id).update({ tournament: official.tournament }).catch(()=>{});
+            }
             if (existing.matchDate !== official.matchDate) {
               changes.push({
                 title: `Tidsændring: ${official.homeTeam} vs ${official.awayTeam}`,
@@ -564,7 +566,7 @@ export default function AdminScreens() {
                   {matchesInRound.map(m => (
                     <View key={m.id} style={{backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#E5E5DF'}}>
                       <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
-                        <Text style={{fontWeight: 'bold', color: '#12352A', flex: 1}}>{m.round} ({m.tournament}): {m.homeTeam} vs {m.awayTeam}</Text>
+                        <Text style={{fontWeight: 'bold', color: '#12352A', flex: 1}}>{m.round} ({m.tournament || '1. Division'}): {m.homeTeam} vs {m.awayTeam}</Text>
                         <TouchableOpacity onPress={() => { setEditingMatchId(m.id); setNewMatchData({ homeTeam: m.homeTeam, awayTeam: m.awayTeam, date: new Date(m.matchDate.replace(' ', 'T')), round: m.round, tournament: m.tournament || '1. Division', alternativeStadium: m.alternativeStadium || '' }); setShowAddMatchModal(true); }}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>✏️ RET INFO</Text></TouchableOpacity>
                       </View>
                       <Text style={{fontSize: 11, color: '#666', marginBottom: 6}}>Dato: {formatDanishDate(m.matchDate)}</Text>
