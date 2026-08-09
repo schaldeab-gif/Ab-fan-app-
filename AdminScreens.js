@@ -200,6 +200,11 @@ export default function AdminScreens() {
   const [showSyncReviewModal, setShowSyncReviewModal] = useState(false);
   const [detectedSyncChanges, setDetectedSyncChanges] = useState([]);
 
+  // State til holdredigering
+  const [editingTeamKey, setEditingTeamKey] = useState(null);
+  const [editTeamDisplayName, setEditTeamDisplayName] = useState('');
+  const [editTeamLeague, setEditTeamLeague] = useState('1. Division');
+
   const [showAddMatchModal, setShowAddMatchModal] = useState(false);
   const [editingMatchId, setEditingMatchId] = useState(null);
   const [newMatchTeamSelector, setNewMatchTeamSelector] = useState({ type: null }); 
@@ -238,7 +243,7 @@ export default function AdminScreens() {
 
   const availableRoles = ['Alm. Bruger', 'Verificeret AB Fan', 'Redaktør', 'Admin', 'Super Admin'];
 
-  // Smart normalisering af samtlige holdnavne, aliaser og stavemåder
+  // Smart normalisering af holdnavne
   const normalizeTeamName = (name) => {
     if (!name) return '';
     const n = name.toLowerCase().trim();
@@ -255,6 +260,12 @@ export default function AdminScreens() {
     if (n.includes('aarhus') || n === 'aarhus fr') return 'aarhus fremad';
     if (n.includes('køge')) return 'hb køge';
     return n;
+  };
+
+  const normalizeRoundName = (roundStr) => {
+    if (!roundStr) return '';
+    const num = roundStr.replace(/\D/g, '');
+    return `${num}. runde`;
   };
 
   if (currentScreen === 'adminHub') {
@@ -400,7 +411,6 @@ export default function AdminScreens() {
     const sortedAdminRounds = Object.keys(adminMatchesByRound).sort((a, b) => Math.min(...adminMatchesByRound[a].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())) - Math.min(...adminMatchesByRound[b].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())));
     const hasMissingResults = (matchesInRound) => { const now = new Date().getTime(); return matchesInRound.some(match => !match.matchDate ? false : new Date(match.matchDate.replace(' ', 'T')).getTime() < now && match.finalScore === false); };
 
-    // Synkroniserings- og scanningsfunktion mod bold.dk master-data
     const handleRunMatchSync = async () => {
       setIsSyncingMatches(true);
       try {
@@ -408,13 +418,12 @@ export default function AdminScreens() {
         let changes = [];
         let seenMatches = new Set();
 
-        // 1. Tjek for dubletter ved hjælp af det normaliserede holdnavn
         matchesList.forEach(m => {
-          const matchKey = `${normalizeTeamName(m.homeTeam)}_${normalizeTeamName(m.awayTeam)}_${m.round}`.toLowerCase();
+          const matchKey = `${normalizeTeamName(m.homeTeam)}_${normalizeTeamName(m.awayTeam)}_${normalizeRoundName(m.round)}`.toLowerCase();
           if (seenMatches.has(matchKey)) {
             changes.push({
               title: `Dublet: ${m.homeTeam} vs ${m.awayTeam} (${m.round})`,
-              description: `Kampen findes flere gange under forskellige navne. Foreslår at slette denne dublet.`,
+              description: `Kampen findes flere gange. Foreslår at slette denne dublet.`,
               action: async () => { await db.collection('matches').doc(m.id).delete(); }
             });
           } else {
@@ -422,18 +431,17 @@ export default function AdminScreens() {
           }
         });
 
-        // 2. Sammenlign med OFFICIAL_MASTER_SCHEDULE fra bold.dk
         OFFICIAL_MASTER_SCHEDULE.forEach(official => {
           const existing = matchesList.find(m => 
             normalizeTeamName(m.homeTeam) === normalizeTeamName(official.homeTeam) && 
             normalizeTeamName(m.awayTeam) === normalizeTeamName(official.awayTeam) && 
-            m.round.toLowerCase() === official.round.toLowerCase()
+            normalizeRoundName(m.round) === normalizeRoundName(official.round)
           );
 
           if (!existing) {
             changes.push({
               title: `Manglende kamp: ${official.homeTeam} vs ${official.awayTeam}`,
-              description: `Findes i det officielle bold.dk program for ${official.round}, men mangler i appen. Foreslår at oprette den.`,
+              description: `Findes i det officielle program for ${official.round}, men mangler i appen. Foreslår at oprette den.`,
               action: async () => {
                 await db.collection('matches').add({
                   homeTeam: official.homeTeam,
@@ -450,7 +458,9 @@ export default function AdminScreens() {
               }
             });
           } else {
-            // Tjek tidsændringer
+            if (existing.round !== official.round) {
+              db.collection('matches').doc(existing.id).update({ round: official.round }).catch(()=>{});
+            }
             if (existing.matchDate !== official.matchDate) {
               changes.push({
                 title: `Tidsændring: ${official.homeTeam} vs ${official.awayTeam}`,
@@ -458,11 +468,10 @@ export default function AdminScreens() {
                 action: async () => { await db.collection('matches').doc(existing.id).update({ matchDate: official.matchDate }); }
               });
             }
-            // Tjek resultat-afvigelser på færdigspillede kampe (bevarer eksisterende resultater, opdaterer hvis manglende)
             if (official.finalScore && (!existing.finalScore || existing.homeScore === null || existing.awayScore === null)) {
               changes.push({
                 title: `Resultat opdatering: ${official.homeTeam} vs ${official.awayTeam}`,
-                description: `Officielt resultat fra bold.dk er ${official.homeScore}-${official.awayScore}.`,
+                description: `Officielt resultat er ${official.homeScore}-${official.awayScore}.`,
                 action: async () => {
                   await db.collection('matches').doc(existing.id).update({
                     homeScore: official.homeScore,
@@ -571,7 +580,6 @@ export default function AdminScreens() {
           );
         })}
 
-        {/* Modal til godkend eller afvis af fundne ændringer */}
         <Modal visible={showSyncReviewModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContainer, {maxHeight: '85%'}]}>
@@ -676,11 +684,16 @@ export default function AdminScreens() {
   }
 
   if (currentScreen === 'adminTeams') {
+    const allTeamsMap = { ...INITIAL_TEAM_DB, ...customTeams };
+    const allTeamKeys = Object.keys(allTeamsMap).sort();
+
     return (
       <ScrollView contentContainerStyle={styles.loginScreenContainer}>
         <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
         <Text style={styles.loginHeader}>🛡️ ADMINISTRER HOLD</Text>
-        <View style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059'}}>
+        
+        {/* Opret nyt hold */}
+        <View style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059', width: '100%'}}>
           <Text style={[styles.sectionTitle, {marginTop: 0}]}>Opret Nyt Hold</Text>
           <TextInput style={styles.inputField} placeholder="Holdets navn (f.eks. Nykøbing FC)" value={newTeamName} onChangeText={setNewTeamName} />
           <Text style={{fontWeight: 'bold', marginBottom: 5}}>Vælg Liga:</Text>
@@ -693,17 +706,81 @@ export default function AdminScreens() {
           </ScrollView>
           <TouchableOpacity style={styles.primaryButton} onPress={async () => {
             if (!newTeamName.trim()) return showAlert("Fejl", "Angiv holdets navn.");
-            await db.collection('custom_teams').doc(newTeamName).set({ name: newTeamName, league: newTeamLeague, logo: 'https://via.placeholder.com/150', bgColor: '#12352A', color: '#FFFFFF' });
+            await db.collection('custom_teams').doc(newTeamName.trim()).set({ name: newTeamName.trim(), displayName: newTeamName.trim(), league: newTeamLeague, logo: 'https://via.placeholder.com/150', bgColor: '#12352A', color: '#FFFFFF' });
             setNewTeamName(''); showAlert("Succes", `${newTeamName} tilføjet til ${newTeamLeague}!`);
           }}><Text style={styles.primaryButtonText}>GEM HOLD</Text></TouchableOpacity>
         </View>
-        <Text style={styles.sectionTitle}>Dine Tilføjede Hold</Text>
-        {Object.keys(customTeams).length === 0 ? <Text style={{fontStyle: 'italic', color: '#666'}}>Du har ikke oprettet nogen hold endnu.</Text> : Object.values(customTeams).map(t => (
-          <View key={t.name} style={styles.adminUserRow}>
-            <View style={{flex: 1}}><Text style={{fontWeight: 'bold', color: '#12352A'}}>{t.name}</Text><Text style={{fontSize: 10, color: '#666'}}>{t.league}</Text></View>
-            <TouchableOpacity onPress={() => Alert.alert("Slet", "Slet hold?", [{text: "Annuller"}, {text: "Slet", style: "destructive", onPress: async () => await db.collection('custom_teams').doc(t.name).delete()}])} style={styles.deleteBtn}><Text style={{color: '#FFFFFF', fontSize: 10, fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>
+
+        {/* Modal til redigering af hold og visningsnavn */}
+        <Modal visible={editingTeamKey !== null} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContainer}>
+              <Text style={styles.modalHeader}>REDIGER HOLD</Text>
+              <Text style={{fontSize: 12, color: '#666', marginBottom: 10}}>Hold nøgle: {editingTeamKey}</Text>
+              
+              <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Visningsnavn (det der vises i appen)</Text>
+              <TextInput style={styles.inputField} value={editTeamDisplayName} onChangeText={setEditTeamDisplayName} placeholder="F.eks. Aalborg eller AaB" />
+
+              <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Liga</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{marginBottom: 15}}>
+                {['Superliga', '1. Division', '2. Division', '3. Division', 'Andre'].map(league => (
+                  <TouchableOpacity key={league} onPress={() => setEditTeamLeague(league)} style={{backgroundColor: editTeamLeague === league ? '#12352A' : '#E5E5DF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, marginRight: 6}}>
+                    <Text style={{color: editTeamLeague === league ? '#FFFFFF' : '#111', fontWeight: 'bold', fontSize: 12}}>{league}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity style={[styles.primaryButton, {width: '100%', marginBottom: 10}]} onPress={async () => {
+                if (!editTeamDisplayName.trim()) return showAlert("Fejl", "Angiv et visningsnavn.");
+                const teamData = allTeamsMap[editingTeamKey] || {};
+                await db.collection('custom_teams').doc(editingTeamKey).set({
+                  name: editingTeamKey,
+                  displayName: editTeamDisplayName.trim(),
+                  league: editTeamLeague,
+                  logo: teamData.logo || 'https://via.placeholder.com/150',
+                  bgColor: teamData.bgColor || '#12352A',
+                  color: teamData.color || '#FFFFFF'
+                }, { merge: true });
+                setEditingTeamKey(null);
+                showAlert("Succes", "Hold opdateret!");
+              }}>
+                <Text style={styles.primaryButtonText}>GEM ÆNDRINGER</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={[styles.secondaryButton, {width: '100%'}]} onPress={() => setEditingTeamKey(null)}>
+                <Text style={{color: '#8A1C1C'}}>ANNULLER</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        ))}
+        </Modal>
+
+        <Text style={styles.sectionTitle}>Alle Hold i Databasen ({allTeamKeys.length})</Text>
+        {allTeamKeys.map(teamKey => {
+          const t = allTeamsMap[teamKey];
+          const displayName = t.displayName || t.name || teamKey;
+          const isCustom = !!customTeams[teamKey];
+          return (
+            <View key={teamKey} style={styles.adminUserRow}>
+              <View style={{flex: 1}}>
+                <Text style={{fontWeight: 'bold', color: '#12352A'}}>{displayName} {displayName !== teamKey ? <Text style={{fontSize: 10, color: '#888'}}>({teamKey})</Text> : null}</Text>
+                <Text style={{fontSize: 10, color: '#666'}}>Liga: {t.league || '1. Division'}</Text>
+              </View>
+              <TouchableOpacity onPress={() => {
+                setEditingTeamKey(teamKey);
+                setEditTeamDisplayName(displayName);
+                setEditTeamLeague(t.league || '1. Division');
+              }} style={{marginRight: 10, backgroundColor: '#C5A059', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4}}>
+                <Text style={{color: '#111', fontSize: 10, fontWeight: 'bold'}}>REDIGER</Text>
+              </TouchableOpacity>
+              {isCustom && (
+                <TouchableOpacity onPress={() => Alert.alert("Slet", `Vil du slette det tilføjede hold ${teamKey}?`, [{text: "Annuller"}, {text: "Slet", style: "destructive", onPress: async () => await db.collection('custom_teams').doc(teamKey).delete()}])} style={styles.deleteBtn}>
+                  <Text style={{color: '#FFFFFF', fontSize: 10, fontWeight: 'bold'}}>SLET</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          );
+        })}
+        <View style={{height: 40}} />
       </ScrollView>
     );
   }
@@ -918,7 +995,7 @@ export default function AdminScreens() {
       <ScrollView contentContainerStyle={styles.loginScreenContainer}>
         <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
         <Text style={styles.loginHeader}>⚙️ INDSTILLINGER</Text>
-        <View style={{backgroundColor: ' #fff', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059'}}>
+        <View style={{backgroundColor: '#fff', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059'}}>
           <TouchableOpacity style={styles.checkboxRow} onPress={() => { const newMode = !appSettings.maintenanceMode; setAppSettings({...appSettings, maintenanceMode: newMode}); db.collection('app_config').doc('settings').set({maintenanceMode: newMode}, {merge: true}); }}>
             <View style={[styles.checkboxBox, appSettings.maintenanceMode && styles.checkboxChecked]}>{appSettings.maintenanceMode && <Text style={{color: '#fff', fontSize: 12}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Aktiver Vedligeholdelsestilstand</Text>
           </TouchableOpacity>
