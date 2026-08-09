@@ -10,7 +10,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 export default function AdminScreens() {
   const ctx = useContext(AppContext);
-  const { currentScreen, setCurrentScreen, userData, matchesList, newsList, usersList, auditLogs, pendingSongs, songsList, allFractions, rssFeedsList, awayInfoList, customTeams, formatDanishDate, appSettings, setAppSettings, logActivity } = ctx;
+  const { currentScreen, setCurrentScreen, userData, matchesList, newsList, usersList, auditLogs, pendingSongs, songsList, allFractions, rssFeedsList, awayInfoList, forumCategories, customTeams, formatDanishDate, appSettings, setAppSettings, logActivity } = ctx;
 
   const TEAM_DB = { ...INITIAL_TEAM_DB, ...customTeams };
   
@@ -47,6 +47,14 @@ export default function AdminScreens() {
   const [newAwayMatchId, setNewAwayMatchId] = useState(null);
   const [newAwayInfoText, setNewAwayInfoText] = useState('');
 
+  // Forum Admin State
+  const [newForumName, setNewForumName] = useState('');
+  const [newForumDesc, setNewForumDesc] = useState('');
+  const [newForumRoles, setNewForumRoles] = useState([]); // Roller med adgang
+  const [editingForumCategory, setEditingForumCategory] = useState(null);
+
+  const availableRoles = ['Alm. Bruger', 'Verificeret AB Fan', 'Redaktør', 'Admin', 'Super Admin'];
+
   if (currentScreen === 'adminHub') {
     const pendingResultsCount = matchesList.filter(m => m.matchDate && new Date(m.matchDate.replace(' ', 'T')).getTime() < new Date().getTime() && m.finalScore === false).length;
     return (
@@ -56,14 +64,105 @@ export default function AdminScreens() {
         <TouchableOpacity style={[styles.primaryButton, {padding: 20, marginBottom: 15}]} onPress={() => setCurrentScreen('adminNews')}><Text style={styles.primaryButtonText}>✍️ ADMINISTRER NYHEDER</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.primaryButton, {padding: 20, marginBottom: 15}]} onPress={() => setCurrentScreen('adminMatches')}><Text style={styles.primaryButtonText}>⚽ RESULTATER & KAMPE {pendingResultsCount > 0 && <Text style={{color: '#E30613'}}>🔴</Text>}</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.primaryButton, {padding: 20, marginBottom: 15}]} onPress={() => setCurrentScreen('adminAwayInfo')}><Text style={styles.primaryButtonText}>🚌 ADMINISTRER AWAY INFO</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.primaryButton, {padding: 20, marginBottom: 15}]} onPress={() => setCurrentScreen('adminForumCategories')}><Text style={styles.primaryButtonText}>💬 ADMINISTRER FORUM</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.primaryButton, {padding: 20, marginBottom: 15}]} onPress={() => setCurrentScreen('adminTeams')}><Text style={styles.primaryButtonText}>🛡️ ADMINISTRER HOLD</Text></TouchableOpacity>
-        <TouchableOpacity style={[styles.primaryButton, {padding: 20, marginBottom: 15}]} onPress={() => { setCurrentScreen('adminUsers'); }}><Text style={styles.primaryButtonText}>👥 BRUGERE & FRAKTIONER</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.primaryButton, {padding: 20, marginBottom: 15}]} onPress={() => setCurrentScreen('adminUsers')}><Text style={styles.primaryButtonText}>👥 BRUGERE & FRAKTIONER</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.primaryButton, {padding: 20, marginBottom: 15}]} onPress={() => setCurrentScreen('adminRss')}><Text style={styles.primaryButtonText}>📰 ADMINISTRER RSS FEEDS</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#C5A059', padding: 20, marginBottom: 15}]} onPress={() => setCurrentScreen('adminSongs')}><Text style={[styles.primaryButtonText, {color: '#111'}]}>🎵 GODKEND SANGE ({pendingSongs.length}) {pendingSongs.length > 0 && <Text style={{color: '#E30613'}}>🔴</Text>}</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 20, borderRadius: 8, borderWidth: 1, borderColor: '#C5A059', marginBottom: 15}]} onPress={() => setCurrentScreen('auditLog')}><Text style={{color: '#C5A059', fontSize: 14, fontWeight: 'bold', textAlign: 'center'}}>📜 SE INTERN LOGBOG</Text></TouchableOpacity>
         {(userData?.role === 'Super Admin' || userData?.email === 'schaldeab@gmail.com') && (
           <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#FFFFFF', padding: 20, borderRadius: 8, borderWidth: 1, borderColor: '#E5E5DF'}]} onPress={() => setCurrentScreen('adminSettings')}><Text style={{color: '#12352A', fontSize: 14, fontWeight: 'bold', textAlign: 'center'}}>⚙️ GENERELLE INDSTILLINGER</Text></TouchableOpacity>
         )}
+      </ScrollView>
+    );
+  }
+
+  if (currentScreen === 'adminForumCategories') {
+    return (
+      <ScrollView contentContainerStyle={styles.loginScreenContainer}>
+        <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
+        <Text style={styles.loginHeader}>💬 FORUM KATEGORIER</Text>
+        <Text style={styles.loginSubheader}>Opret eller rediger fora og tildel hvilke roller der må se dem.</Text>
+
+        {editingForumCategory && (
+          <View style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059', width: '100%'}}>
+            <Text style={[styles.sectionTitle, {marginTop: 0}]}>Rediger Forum</Text>
+            <TextInput style={styles.inputField} placeholder="Kategori navn" value={editingForumCategory.name} onChangeText={t => setEditingForumCategory({...editingForumCategory, name: t})} />
+            <TextInput style={styles.inputField} placeholder="Beskrivelse" value={editingForumCategory.description} onChangeText={t => setEditingForumCategory({...editingForumCategory, description: t})} />
+            <Text style={{fontWeight: 'bold', marginVertical: 5}}>Tilladte roller (ingen valgt = alle har adgang):</Text>
+            <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15}}>
+              {availableRoles.map(role => {
+                const isSelected = (editingForumCategory.allowedRoles || []).includes(role);
+                return (
+                  <TouchableOpacity key={role} onPress={() => {
+                    const currentRoles = editingForumCategory.allowedRoles || [];
+                    const updated = isSelected ? currentRoles.filter(r => r !== role) : [...currentRoles, role];
+                    setEditingForumCategory({...editingForumCategory, allowedRoles: updated});
+                  }} style={{backgroundColor: isSelected ? '#12352A' : '#E5E5DF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6}}>
+                    <Text style={{color: isSelected ? '#C5A059' : '#111', fontSize: 12, fontWeight: 'bold'}}>{role}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TouchableOpacity style={styles.primaryButton} onPress={async () => {
+              if (!editingForumCategory.name.trim()) return alert("Angiv navn.");
+              await db.collection('forum_categories').doc(editingForumCategory.id).update({
+                name: editingForumCategory.name,
+                description: editingForumCategory.description || '',
+                allowedRoles: editingForumCategory.allowedRoles || []
+              });
+              setEditingForumCategory(null);
+              alert("Forum opdateret!");
+            }}><Text style={styles.primaryButtonText}>GEM ÆNDRINGER</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.secondaryButton} onPress={() => setEditingForumCategory(null)}><Text style={{color: '#8A1C1C'}}>ANNULLER</Text></TouchableOpacity>
+          </View>
+        )}
+
+        <View style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059', width: '100%'}}>
+          <Text style={[styles.sectionTitle, {marginTop: 0}]}>Opret Nyt Forum</Text>
+          <TextInput style={styles.inputField} placeholder="Kategori navn (f.eks. Away Days)" value={newForumName} onChangeText={setNewForumName} />
+          <TextInput style={styles.inputField} placeholder="Beskrivelse" value={newForumDesc} onChangeText={setNewForumDesc} />
+          <Text style={{fontWeight: 'bold', marginVertical: 5}}>Tilladte roller (ingen valgt = alle har adgang):</Text>
+          <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15}}>
+            {availableRoles.map(role => {
+              const isSelected = newForumRoles.includes(role);
+              return (
+                <TouchableOpacity key={role} onPress={() => {
+                  setNewForumRoles(isSelected ? newForumRoles.filter(r => r !== role) : [...newForumRoles, role]);
+                }} style={{backgroundColor: isSelected ? '#12352A' : '#E5E5DF', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6}}>
+                  <Text style={{color: isSelected ? '#C5A059' : '#111', fontSize: 12, fontWeight: 'bold'}}>{role}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TouchableOpacity style={styles.primaryButton} onPress={async () => {
+            if (!newForumName.trim()) return alert("Angiv kategori navn.");
+            await db.collection('forum_categories').add({
+              name: newForumName.trim(),
+              description: newForumDesc.trim(),
+              allowedRoles: newForumRoles,
+              createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            setNewForumName('');
+            setNewForumDesc('');
+            setNewForumRoles([]);
+            alert("Forum oprettet!");
+          }}><Text style={styles.primaryButtonText}>OPRET FORUM</Text></TouchableOpacity>
+        </View>
+
+        <Text style={styles.sectionTitle}>Eksisterende Fora</Text>
+        {forumCategories.map(cat => (
+          <View key={cat.id} style={{backgroundColor: '#fff', padding: 15, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#E5E5DF', width: '100%'}}>
+            <Text style={{fontWeight: 'bold', fontSize: 16, color: '#12352A'}}>{cat.name}</Text>
+            <Text style={{fontSize: 12, color: '#666', marginBottom: 5}}>{cat.description}</Text>
+            <Text style={{fontSize: 11, color: '#C5A059', fontWeight: 'bold', marginBottom: 10}}>Adgang for: {cat.allowedRoles && cat.allowedRoles.length > 0 ? cat.allowedRoles.join(', ') : 'Alle brugere'}</Text>
+            <View style={{flexDirection: 'row', gap: 10}}>
+              <TouchableOpacity onPress={() => setEditingForumCategory(cat)} style={{backgroundColor: '#C5A059', padding: 6, borderRadius: 4, flex: 1, alignItems: 'center'}}><Text style={{color: '#111', fontWeight: 'bold', fontSize: 11}}>REDIGER</Text></TouchableOpacity>
+              <TouchableOpacity onPress={() => Alert.alert("Slet", `Vil du slette ${cat.name}?`, [{text: "Annuller"}, {text: "Slet", style: "destructive", onPress: async () => await db.collection('forum_categories').doc(cat.id).delete()}])} style={{backgroundColor: '#8A1C1C', padding: 6, borderRadius: 4, flex: 1, alignItems: 'center'}}><Text style={{color: '#fff', fontWeight: 'bold', fontSize: 11}}>SLET</Text></TouchableOpacity>
+            </View>
+          </View>
+        ))}
+        <View style={{height: 40}} />
       </ScrollView>
     );
   }
