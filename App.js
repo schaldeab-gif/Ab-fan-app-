@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, StatusBar, Alert, View, TouchableOpacity, Text, Platform } from 'react-native';
+import { SafeAreaView, StatusBar, Alert, View, TouchableOpacity, Text } from 'react-native';
 import { AppContext } from './AppContext';
 import firebase from 'firebase';
 import { auth, db } from './FirebaseConfig';
@@ -8,7 +8,7 @@ import { INITIAL_TEAM_DB } from './teamDatabase';
 
 import ClientScreens from './ClientScreens';
 import AdminScreens from './AdminScreens';
-import { Video, Audio, ResizeMode } from 'expo-av';
+import { Video, Audio } from 'expo-av';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -76,7 +76,14 @@ export default function App() {
     db.collection('app_config').doc('settings').onSnapshot((doc) => { if(doc.exists) setAppSettings(doc.data()); });
     db.collection('news').orderBy('createdAt', 'desc').onSnapshot(snap => setNewsList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('matches').orderBy('matchDate', 'asc').onSnapshot(snap => setMatchesList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    db.collection('users').orderBy('points', 'desc').onSnapshot(snap => setLeaderboard(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    
+    // RETTELSE HER: Vi sørger nu for, at "usersList" også bliver fyldt op, så den kan læses af dit admin panel!
+    db.collection('users').orderBy('points', 'desc').onSnapshot(snap => {
+      const fetchedUsers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setLeaderboard(fetchedUsers);
+      setUsersList(fetchedUsers);
+    });
+
     db.collection('audit_logs').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => setAuditLogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('songs').where('approved', '==', true).onSnapshot(snap => setSongsList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('songs').where('approved', '==', false).onSnapshot(snap => setPendingSongs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
@@ -116,7 +123,7 @@ export default function App() {
     });
   }, []);
 
-  // SIKRET: Hent Away Info KUN når brugeren er logget ind (så Firebase Security Rules ikke blokerer det ved opstart)
+  // Hent Away Info KUN når brugeren er logget ind
   useEffect(() => {
     if (!user) {
       setAwayInfoList([]);
@@ -183,28 +190,17 @@ export default function App() {
     return (
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
-        <TouchableOpacity style={[styles.splashContainer, { justifyContent: 'center', alignItems: 'center' }]} activeOpacity={1} onPress={() => setShowSplash(false)}>
-          <View style={[styles.splashVideoWrapper, { width: '90%', maxWidth: 320, height: 420, justifyContent: 'center', alignItems: 'center', alignSelf: 'center', overflow: 'hidden' }]}>
-            {Platform.OS === 'web' ? (
-              <video
-                src="https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4"
-                style={{ width: '100%', height: '100%', objectFit: 'contain', backgroundColor: 'transparent' }}
-                autoPlay
-                muted={isVideoMuted}
-                playsInline
-                onEnded={() => setShowSplash(false)}
-              />
-            ) : (
-              <Video 
-                source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
-                style={{ width: '100%', height: '100%' }} 
-                resizeMode={ResizeMode.CONTAIN} 
-                shouldPlay={true} 
-                isMuted={isVideoMuted}
-                isLooping={false} 
-                onPlaybackStatusUpdate={(status) => { if (status.didJustFinish) setShowSplash(false); }} 
-              />
-            )}
+        <TouchableOpacity style={styles.splashContainer} activeOpacity={1} onPress={() => setShowSplash(false)}>
+          <View style={styles.splashVideoWrapper}>
+            <Video 
+              source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
+              style={styles.splashVideo} 
+              resizeMode="contain" 
+              shouldPlay={true} 
+              isMuted={isVideoMuted}
+              isLooping={false} 
+              onPlaybackStatusUpdate={(status) => { if (status.didJustFinish) setShowSplash(false); }} 
+            />
           </View>
           <TouchableOpacity 
             onPress={() => setIsVideoMuted(!isVideoMuted)} 
