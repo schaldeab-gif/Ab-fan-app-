@@ -53,7 +53,6 @@ export default function App() {
     setupAudio();
   }, []);
 
-  // Håndter bruger-auth state
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
       if (currentUser) {
@@ -71,19 +70,15 @@ export default function App() {
     return unsubscribe;
   }, []);
 
-  // Hent offentlig data
   useEffect(() => {
     db.collection('app_config').doc('settings').onSnapshot((doc) => { if(doc.exists) setAppSettings(doc.data()); });
     db.collection('news').orderBy('createdAt', 'desc').onSnapshot(snap => setNewsList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('matches').orderBy('matchDate', 'asc').onSnapshot(snap => setMatchesList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    db.collection('users').orderBy('points', 'desc').onSnapshot(snap => setLeaderboard(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     
-    // RETTELSE HER: Vi sørger nu for, at "usersList" også bliver fyldt op, så den kan læses af dit admin panel!
-    db.collection('users').orderBy('points', 'desc').onSnapshot(snap => {
-      const fetchedUsers = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setLeaderboard(fetchedUsers);
-      setUsersList(fetchedUsers);
-    });
-
+    // RETTET: Lytter nu aktivt på alle brugere til admin-panelet
+    db.collection('users').onSnapshot(snap => setUsersList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
+    
     db.collection('audit_logs').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => setAuditLogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('songs').where('approved', '==', true).onSnapshot(snap => setSongsList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('songs').where('approved', '==', false).onSnapshot(snap => setPendingSongs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
@@ -123,7 +118,6 @@ export default function App() {
     });
   }, []);
 
-  // Hent Away Info KUN når brugeren er logget ind
   useEffect(() => {
     if (!user) {
       setAwayInfoList([]);
@@ -131,9 +125,7 @@ export default function App() {
     }
     const unsubAway = db.collection('away_info').onSnapshot(snap => {
       setAwayInfoList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, error => {
-      console.log("Away info fejl:", error.message);
-    });
+    }, error => {});
     return () => unsubAway();
   }, [user]);
 
