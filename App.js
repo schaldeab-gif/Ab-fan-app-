@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, StatusBar, Alert, View, TouchableOpacity, Text, Modal } from 'react-native';
+import { SafeAreaView, StatusBar, View, TouchableOpacity, Text, Modal, Platform } from 'react-native';
 import { AppContext } from './AppContext';
 import firebase from 'firebase';
 import { auth, db } from './FirebaseConfig';
@@ -223,7 +223,6 @@ export default function App() {
         <StatusBar barStyle="light-content" backgroundColor="#12352A" />
         {isAdminScreen ? <AdminScreens /> : <ClientScreens />}
 
-        {/* Global Custom Alert Modal */}
         <Modal visible={customAlert.visible} transparent animationType="fade">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContainer, {maxWidth: 320, borderWidth: 2, borderColor: '#C5A059'}]}>
