@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, StatusBar, Alert, View, TouchableOpacity, Text } from 'react-native';
+import { SafeAreaView, StatusBar, Alert, View, TouchableOpacity, Text, Platform } from 'react-native';
 import { AppContext } from './AppContext';
 import firebase from 'firebase';
 import { auth, db } from './FirebaseConfig';
@@ -184,16 +184,27 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
         <TouchableOpacity style={[styles.splashContainer, { justifyContent: 'center', alignItems: 'center' }]} activeOpacity={1} onPress={() => setShowSplash(false)}>
-          <View style={[styles.splashVideoWrapper, { width: '90%', maxWidth: 320, height: 420, justifyContent: 'center', alignItems: 'center', alignSelf: 'center' }]}>
-            <Video 
-              source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
-              style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
-              resizeMode={ResizeMode.CONTAIN} 
-              shouldPlay={true} 
-              isMuted={isVideoMuted}
-              isLooping={false} 
-              onPlaybackStatusUpdate={(status) => { if (status.didJustFinish) setShowSplash(false); }} 
-            />
+          <View style={[styles.splashVideoWrapper, { width: '90%', maxWidth: 320, height: 420, justifyContent: 'center', alignItems: 'center', alignSelf: 'center', overflow: 'hidden' }]}>
+            {Platform.OS === 'web' ? (
+              <video
+                src="https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4"
+                style={{ width: '100%', height: '100%', objectFit: 'contain', backgroundColor: 'transparent' }}
+                autoPlay
+                muted={isVideoMuted}
+                playsInline
+                onEnded={() => setShowSplash(false)}
+              />
+            ) : (
+              <Video 
+                source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
+                style={{ width: '100%', height: '100%' }} 
+                resizeMode={ResizeMode.CONTAIN} 
+                shouldPlay={true} 
+                isMuted={isVideoMuted}
+                isLooping={false} 
+                onPlaybackStatusUpdate={(status) => { if (status.didJustFinish) setShowSplash(false); }} 
+              />
+            )}
           </View>
           <TouchableOpacity 
             onPress={() => setIsVideoMuted(!isVideoMuted)} 
