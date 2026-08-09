@@ -8,7 +8,7 @@ import { INITIAL_TEAM_DB } from './teamDatabase';
 
 import ClientScreens from './ClientScreens';
 import AdminScreens from './AdminScreens';
-import { Video, Audio } from 'expo-av';
+import { Video, Audio, ResizeMode } from 'expo-av';
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -184,11 +184,11 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
         <TouchableOpacity style={styles.splashContainer} activeOpacity={1} onPress={() => setShowSplash(false)}>
-          <View style={styles.splashVideoWrapper}>
+          <View style={[styles.splashVideoWrapper, { width: '100%', height: '70%', justifyContent: 'center', alignItems: 'center' }]}>
             <Video 
               source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
-              style={styles.splashVideo} 
-              resizeMode="contain" 
+              style={{ width: '100%', height: '100%' }} 
+              resizeMode={ResizeMode.CONTAIN} 
               shouldPlay={true} 
               isMuted={isVideoMuted}
               isLooping={false} 
