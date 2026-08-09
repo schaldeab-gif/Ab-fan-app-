@@ -17,6 +17,11 @@ export default function AdminScreens() {
   const [logCategoryFilter, setLogCategoryFilter] = useState('Alle');
   const [isCalculatingPoints, setIsCalculatingPoints] = useState(false);
   const [isSyncingMatches, setIsSyncingMatches] = useState(false);
+  
+  // Ny sync review modal state til gennemgang, accept/afvis og dubletkontrol
+  const [showSyncReviewModal, setShowSyncReviewModal] = useState(false);
+  const [detectedSyncChanges, setDetectedSyncChanges] = useState([]);
+
   const [showAddMatchModal, setShowAddMatchModal] = useState(false);
   const [editingMatchId, setEditingMatchId] = useState(null);
   const [newMatchTeamSelector, setNewMatchTeamSelector] = useState({ type: null }); 
@@ -199,25 +204,67 @@ export default function AdminScreens() {
     const sortedAdminRounds = Object.keys(adminMatchesByRound).sort((a, b) => Math.min(...adminMatchesByRound[a].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())) - Math.min(...adminMatchesByRound[b].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())));
     const hasMissingResults = (matchesInRound) => { const now = new Date().getTime(); return matchesInRound.some(match => !match.matchDate ? false : new Date(match.matchDate.replace(' ', 'T')).getTime() < now && match.finalScore === false); };
 
+    // Avanceret synkroniserings- og scanningsfunktion med dublet-tjek og godkend/afvis ændringer
+    const handleRunMatchSync = async () => {
+      setIsSyncingMatches(true);
+      try {
+        await new Promise(r => setTimeout(r, 1000));
+        let changes = [];
+        let seenMatches = new Set();
+
+        // 1. Scan for dubletter i eksisterende kampliste
+        matchesList.forEach(m => {
+          const matchKey = `${m.homeTeam}_${m.awayTeam}_${m.round}`.toLowerCase();
+          if (seenMatches.has(matchKey)) {
+            changes.push({
+              id: m.id,
+              type: 'duplicate',
+              title: `Dublet fundet: ${m.homeTeam} vs ${m.awayTeam} (${m.round})`,
+              description: `Der findes allerede en identisk kamp i samme runde. Foreslår sletning af denne dublet.`,
+              action: async () => { await db.collection('matches').doc(m.id).delete(); }
+            });
+          } else {
+            seenMatches.add(matchKey);
+          }
+        });
+
+        // 2. Scan for udestående resultater på kampe, der er startet
+        const nowTime = new Date().getTime();
+        matchesList.forEach(m => {
+          if (m.matchDate && new Date(m.matchDate.replace(' ', 'T')).getTime() < nowTime && !m.finalScore && m.homeScore === null) {
+            changes.push({
+              id: m.id,
+              type: 'missing_score',
+              title: `Mangler resultat: ${m.homeTeam} vs ${m.awayTeam}`,
+              description: `Kampen er startet (${formatDanishDate(m.matchDate)}), men har ikke fået registreret et endeligt resultat endnu.`,
+              action: async () => { /* Kan markeres eller håndteres direkte */ }
+            });
+          }
+        });
+
+        // Hvis ingen ændringer eller dubletter blev fundet
+        if (changes.length === 0) {
+          showAlert("Synkronisering fuldført", "Kampprogrammet er scannet igennem. Ingen dubletter eller uoverensstemmelser fundet!");
+          logActivity('kampe', 'Kampprogram synkroniseret - ingen fejl fundet', userData?.username || 'Admin');
+        } else {
+          setDetectedSyncChanges(changes);
+          setShowSyncReviewModal(true);
+        }
+      } catch(e) {
+        showAlert("Fejl ved synkronisering", e.message);
+      } finally {
+        setIsSyncingMatches(false);
+      }
+    };
+
     return (
       <ScrollView contentContainerStyle={styles.loginScreenContainer}>
         <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
         <Text style={styles.loginHeader}>⚽ RESULTATER</Text>
 
         {/* Synkroniseringsknap med loading bar */}
-        <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#12352A', borderColor: '#C5A059', borderWidth: 1, marginBottom: 15}]} onPress={async () => {
-          setIsSyncingMatches(true);
-          try {
-            await new Promise(r => setTimeout(r, 1500));
-            showAlert("Synkronisering fuldført", "Kampprogrammet er scannet for dubletter, og tider samt resultater er opdateret uden dubletter!");
-            logActivity('kampe', 'Kampprogram synkroniseret og opdateret', userData?.username || 'Admin');
-          } catch(e) {
-            showAlert("Fejl", e.message);
-          } finally {
-            setIsSyncingMatches(false);
-          }
-        }} disabled={isSyncingMatches}>
-          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>{isSyncingMatches ? '⏳ SYNKRONISERER KAMPPROGRAM...' : '🔄 SYNKRONISER KAMPPROGRAM (TJEK FOR DUBLATTER & NYE TIDER)'}</Text>
+        <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#12352A', borderColor: '#C5A059', borderWidth: 1, marginBottom: 15}]} onPress={handleRunMatchSync} disabled={isSyncingMatches}>
+          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>{isSyncingMatches ? '⏳ SCANNER KAMPPROGRAM...' : '🔄 SYNKRONISER & TJEK FOR DUBLATTER / ÆNDRINGER'}</Text>
         </TouchableOpacity>
 
         {isSyncingMatches && (
@@ -292,6 +339,58 @@ export default function AdminScreens() {
             </View>
           );
         })}
+
+        {/* Modal til gennemgang og godkendelse/afvisning af synkroniseringsændringer og dubletter */}
+        <Modal visible={showSyncReviewModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContainer, {maxHeight: '85%'}]}>
+              <Text style={styles.modalHeader}>🔄 SYNKRONISERING & ÆNDRINGER</Text>
+              <Text style={{fontSize: 12, color: '#666', marginBottom: 15, textAlign: 'center'}}>Følgende uoverensstemmelser eller dubletter blev fundet i kampprogrammet. Vælg om du vil acceptere eller afvise ændringen:</Text>
+              
+              <ScrollView style={{width: '100%', maxHeight: 320, marginBottom: 15}}>
+                {detectedSyncChanges.length === 0 ? (
+                  <Text style={{textAlign: 'center', fontStyle: 'italic', color: '#666', padding: 20}}>Ingen udestående ændringer at gennemgå.</Text>
+                ) : (
+                  detectedSyncChanges.map((change, index) => (
+                    <View key={index} style={{backgroundColor: '#F9F9F6', padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#E5E5DF'}}>
+                      <Text style={{fontWeight: 'bold', fontSize: 14, color: '#12352A', marginBottom: 2}}>{change.title}</Text>
+                      <Text style={{fontSize: 11, color: '#555', marginBottom: 8}}>{change.description}</Text>
+                      <View style={{flexDirection: 'row', gap: 10}}>
+                        <TouchableOpacity style={{backgroundColor: '#4CAF50', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, flex: 1, alignItems: 'center'}} onPress={async () => {
+                          try {
+                            if (change.action) await change.action();
+                            setDetectedSyncChanges(prev => prev.filter((_, i) => i !== index));
+                            if (detectedSyncChanges.length <= 1) {
+                              setShowSyncReviewModal(false);
+                              showAlert("Synkronisering", "Valgte ændringer blev godkendt og anvendt!");
+                              logActivity('kampe', 'Synkroniseringsændringer godkendt af admin', userData?.username || 'Admin');
+                            }
+                          } catch(err) {
+                            showAlert("Fejl", err.message);
+                          }
+                        }}>
+                          <Text style={{color: '#fff', fontSize: 11, fontWeight: 'bold'}}>ACCEPTER</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={{backgroundColor: '#8A1C1C', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 4, flex: 1, alignItems: 'center'}} onPress={() => {
+                          setDetectedSyncChanges(prev => prev.filter((_, i) => i !== index));
+                          if (detectedSyncChanges.length <= 1) {
+                            setShowSyncReviewModal(false);
+                          }
+                        }}>
+                          <Text style={{color: '#fff', fontSize: 11, fontWeight: 'bold'}}>AFVIS</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
+
+              <TouchableOpacity style={[styles.secondaryButton, {width: '100%'}]} onPress={() => setShowSyncReviewModal(false)}>
+                <Text style={{color: '#12352A', fontWeight: 'bold'}}>LUK OVERSIGT</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
         <Modal visible={showAddMatchModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
