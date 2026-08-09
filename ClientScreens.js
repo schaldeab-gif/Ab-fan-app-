@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, Alert, KeyboardAvoidingView, Platform, Modal, ImageBackground, Linking } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, KeyboardAvoidingView, Platform, Modal, ImageBackground, Linking } from 'react-native';
 import { AppContext } from './AppContext';
 import firebase from 'firebase';
 import { db, auth, storage } from './FirebaseConfig';
@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 
 export default function ClientScreens() {
   const ctx = useContext(AppContext);
-  const { currentScreen, setCurrentScreen, user, userData, setUserData, leaderboard, matchesList, newsList, rssNews, forumCategories, allThreads, songsList, awayInfoList, formatDanishDate, getTeamLogo, getTeamStyle, getStadium, setMenuOpen, menuOpen, handleManualRefresh, nextMatch, upcomingMatchesToDisplay, isMatchLocked, logActivity } = ctx;
+  const { currentScreen, setCurrentScreen, user, userData, setUserData, leaderboard, matchesList, newsList, rssNews, forumCategories, allThreads, songsList, awayInfoList, usersList, formatDanishDate, getTeamLogo, getTeamStyle, getStadium, setMenuOpen, menuOpen, handleManualRefresh, nextMatch, upcomingMatchesToDisplay, isMatchLocked, logActivity, showAlert } = ctx;
 
   const [selectedNews, setSelectedNews] = useState(null);
   const [newsComments, setNewsComments] = useState([]);
@@ -68,11 +68,33 @@ export default function ClientScreens() {
   const pendingSongsCount = ctx.pendingSongs?.length || 0;
   const adminNotificationsCount = pendingSongsCount + pendingResultsCount;
 
-  // Tilladelsestjek for forum kategorier
+  // Live avatar hjælperfunktion så forum altid viser nyeste profilbillede
+  const getLiveAuthorPhoto = (authorId, defaultPhoto) => {
+    const foundUser = usersList.find(u => u.id === authorId);
+    return foundUser?.photoURL || defaultPhoto || 'https://via.placeholder.com/150';
+  };
+
+  // Notifikationer beregning til notifikationsbaren
+  const getNotifications = () => {
+    let notifs = [];
+    if (!user) return notifs;
+    // Tjek om der er nye away info ture
+    if (awayInfoList.length > 0 && canViewAwayInfo) {
+      notifs.push({ id: 'away', text: `🚌 Ny away info tilgængelig (${awayInfoList.length} tur(e))`, screen: 'awayInfo' });
+    }
+    // Tjek egne tråde for nye svar
+    const myThreads = allThreads.filter(t => t.authorId === user.uid);
+    if (myThreads.length > 0) {
+      notifs.push({ id: 'forum', text: `💬 Du har oprettet ${myThreads.length} debat(ter) i forummet.`, screen: 'forum' });
+    }
+    return notifs;
+  };
+  const activeNotifications = getNotifications();
+
   const canAccessCategory = (cat) => {
     if (isAdmin || isEditor || isSuperAdmin) return true;
     const allowed = cat.allowedRoles;
-    if (!allowed || allowed.length === 0) return true; // Offentlig som standard
+    if (!allowed || allowed.length === 0) return true;
     return allowed.includes(userData?.role || 'Alm. Bruger');
   };
 
@@ -116,13 +138,13 @@ export default function ClientScreens() {
   const handlePickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5 });
     if (!result.canceled && result.assets && result.assets.length > 0) {
-      if (result.assets[0].fileSize && result.assets[0].fileSize > 2 * 1024 * 1024) return alert("Max 2 MB.");
+      if (result.assets[0].fileSize && result.assets[0].fileSize > 2 * 1024 * 1024) return showAlert("Fejl", "Billedet må maksimalt være 2 MB.");
       setIsUploading(true);
       try {
         const response = await fetch(result.assets[0].uri); const blob = await response.blob();
         const ref = storage.ref().child(`avatars/${auth.currentUser ? auth.currentUser.uid : 'ny_bruger'}_${Date.now()}`);
-        await ref.put(blob); setAvatarUrl(await ref.getDownloadURL()); alert("Billede uploadet!");
-      } catch (error) { alert("Fejl: " + error.message); } finally { setIsUploading(false); }
+        await ref.put(blob); setAvatarUrl(await ref.getDownloadURL()); showAlert("Succes", "Billede uploadet!");
+      } catch (error) { showAlert("Fejl", error.message); } finally { setIsUploading(false); }
     }
   };
 
@@ -135,7 +157,7 @@ export default function ClientScreens() {
         const newBlocked = [...blockedUsers, targetUid];
         await db.collection('users').doc(user.uid).update({ blockedUsers: newBlocked });
         setUserData({...userData, blockedUsers: newBlocked});
-        alert(`${targetName} er blokeret.`);
+        showAlert("Blokeret", `${targetName} er blokeret.`);
       }}
     ]);
   };
@@ -145,13 +167,13 @@ export default function ClientScreens() {
       {text: "Annuller", style: "cancel"},
       {text: "Anmeld", style: "destructive", onPress: async () => {
         await db.collection('reports').add({ contentType, contentId, reportedAuthorId: authorId, reportedBy: user.uid, createdAt: firebase.firestore.FieldValue.serverTimestamp(), status: 'pending' });
-        alert("Indholdet er anmeldt til administratorerne.");
+        showAlert("Anmeldt", "Indholdet er anmeldt til administratorerne.");
       }}
     ]);
   };
 
   const openUGCMenu = (contentType, contentId, authorId, authorName) => {
-    if (!user) return alert("Log ind for at bruge denne funktion.");
+    if (!user) return showAlert("Log ind", "Log ind for at bruge denne funktion.");
     Alert.alert("Valgmuligheder", "Hvad vil du gøre?", [
       {text: "Anmeld indhold", onPress: () => handleReportContent(contentType, contentId, authorId, authorName)},
       {text: `Bloker ${authorName}`, onPress: () => handleBlockUser(authorId, authorName)},
@@ -166,20 +188,22 @@ export default function ClientScreens() {
       const userRankIndex = sortedLb.findIndex(u => u.id === ctx.viewingProfileUser.id);
       if (userRankIndex !== -1) userRank = `${userRankIndex + 1}. plads`;
     }
+    const viewUser = ctx.viewingProfileUser;
+    const viewUserLivePhoto = viewUser ? getLiveAuthorPhoto(viewUser.id, viewUser.photoURL) : '';
     return (
-      <Modal visible={ctx.viewingProfileUser !== null} transparent animationType="slide">
+      <Modal visible={viewUser !== null} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            {ctx.viewingProfileUser && (
+            {viewUser && (
               <>
-                <Image source={{uri: ctx.viewingProfileUser.photoURL}} style={{width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: '#C5A059', marginBottom: 10}} />
-                <Text style={{fontSize: 20, fontWeight: '900', color: '#12352A', marginBottom: 2}}>{ctx.viewingProfileUser.username}</Text>
-                <Text style={{fontSize: 12, color: '#C5A059', fontWeight: 'bold', marginBottom: 10}}>{ctx.viewingProfileUser.role || 'Alm. Bruger'}</Text>
-                {!ctx.viewingProfileUser.hideFractions && ctx.viewingProfileUser.fractions?.length > 0 && (<Text style={{fontSize: 12, color: '#333', fontStyle: 'italic', marginBottom: 10}}>Fraktioner: {ctx.viewingProfileUser.fractions.join(', ')}</Text>)}
+                <Image source={{uri: viewUserLivePhoto}} style={{width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: '#C5A059', marginBottom: 10}} />
+                <Text style={{fontSize: 20, fontWeight: '900', color: '#12352A', marginBottom: 2}}>{viewUser.username}</Text>
+                <Text style={{fontSize: 12, color: '#C5A059', fontWeight: 'bold', marginBottom: 10}}>{viewUser.role || 'Alm. Bruger'}</Text>
+                {!viewUser.hideFractions && viewUser.fractions?.length > 0 && (<Text style={{fontSize: 13, color: '#12352A', fontWeight: 'bold', fontStyle: 'italic', marginBottom: 10}}>{viewUser.fractions.join(', ')}</Text>)}
                 <View style={{backgroundColor: '#12352A', padding: 12, borderRadius: 8, width: '100%', marginBottom: 15, borderWidth: 1, borderColor: '#C5A059'}}>
                   <Text style={{fontSize: 12, fontWeight: '900', color: '#C5A059', marginBottom: 8, textTransform: 'uppercase'}}>📊 Tipspil Statistik</Text>
                   <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}><Text style={{color: '#fff', fontSize: 12}}>Placering:</Text><Text style={{color: '#fff', fontWeight: 'bold', fontSize: 12}}>{userRank}</Text></View>
-                  <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}><Text style={{color: '#fff', fontSize: 12}}>Samlede Point:</Text><Text style={{color: '#C5A059', fontWeight: 'bold', fontSize: 12}}>{ctx.viewingProfileUser.points || 0} pts</Text></View>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6}}><Text style={{color: '#fff', fontSize: 12}}>Samlede Point:</Text><Text style={{color: '#C5A059', fontWeight: 'bold', fontSize: 12}}>{viewUser.points || 0} pts</Text></View>
                 </View>
                 <TouchableOpacity style={[styles.primaryButton, {width: '100%'}]} onPress={() => ctx.setViewingProfileUser(null)}><Text style={styles.primaryButtonText}>LUK</Text></TouchableOpacity>
               </>
@@ -190,49 +214,60 @@ export default function ClientScreens() {
     );
   };
 
-  const TopBarMenu = () => (
-    <>
-      <TouchableOpacity onPress={() => setCurrentScreen('home')} style={styles.headerBannerContainer} activeOpacity={0.9}>
-        <Image source={{ uri: 'https://i.imgur.com/fpRHIje.png' }} style={styles.headerImageBanner} resizeMode="cover" />
-      </TouchableOpacity>
-      <View style={styles.menuBar}>
-        <TouchableOpacity onPress={() => setMenuOpen(!menuOpen)} style={styles.menuBarButton}><Text style={styles.menuBarText}>{menuOpen ? '✖ LUK MENU' : '☰ MENU'} {!menuOpen && adminNotificationsCount > 0 && isAdmin && <Text style={{color: '#E30613'}}> 🔴</Text>}</Text></TouchableOpacity>
-        <TouchableOpacity onPress={handleManualRefresh} style={styles.refreshBarButton}><Text style={styles.refreshBarText}>🔄 GENINDLÆS</Text></TouchableOpacity>
-      </View>
-      {menuOpen && (
-        <>
-          <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuOpen(false)} />
-          <View style={styles.sideMenu}>
-            {user && (
-              <View style={styles.profileHeader}>
-                <TouchableOpacity onPress={() => handleOpenProfile(user.uid)}><Image source={{ uri: userData?.photoURL || user?.photoURL }} style={styles.profileImage} /></TouchableOpacity>
-                <Text style={styles.profileName}>{userData?.username || user.displayName || 'AB Fan'}</Text>
-                <Text style={{color: '#C5A059', fontSize: 11, fontWeight: 'bold', marginBottom: 4}}>{isSuperAdmin ? 'Super Admin' : (userData?.role || 'Alm. Bruger')}</Text>
-                {!hideFractions && userData?.fractions?.length > 0 && (<Text style={{color: '#fff', fontSize: 10, marginBottom: 8, fontStyle: 'italic'}}>Fraktion: {userData.fractions.join(', ')}</Text>)}
-                <TouchableOpacity style={styles.editProfileMenuBtn} onPress={() => { setUsername(userData?.username || ''); setAvatarUrl(userData?.photoURL || user?.photoURL || ''); setBio(userData?.bio || ''); setSignature(userData?.signature || ''); setCurrentScreen('editProfile'); setMenuOpen(false); }}><Text style={styles.editProfileMenuText}>✏️ REDIGER PROFIL</Text></TouchableOpacity>
-              </View>
-            )}
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('home'); setMenuOpen(false); }}><Text style={styles.menuItemText}>🏠 FORSIDE</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('tipspil'); setMenuOpen(false); }}><Text style={styles.menuItemText}>⚽ TIPSSPIL</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setSelectedThread(null); setSelectedCategory(null); setCurrentScreen('forum'); setMenuOpen(false); }}><Text style={styles.menuItemText}>💬 FORUM</Text></TouchableOpacity>
-            <TouchableOpacity style={styles.menuItem} onPress={() => { setSelectedSong(null); setShowSongForm(false); setCurrentScreen('songs'); setMenuOpen(false); }}><Text style={styles.menuItemText}>🎵 SANGE & TEKSTER</Text></TouchableOpacity>
-            {canViewAwayInfo && <TouchableOpacity style={styles.menuItem} onPress={() => { setSelectedAwayInfo(null); setCurrentScreen('awayInfo'); setMenuOpen(false); }}><Text style={styles.menuItemText}>🚌 AWAY INFO</Text></TouchableOpacity>}
-            {isAdmin && <TouchableOpacity style={styles.adminMenuBtn} onPress={() => { setCurrentScreen('adminHub'); setMenuOpen(false); }}><Text style={styles.adminMenuText}>🛠️ ADMIN PANEL {adminNotificationsCount > 0 && <Text style={{color: '#E30613'}}>🔴</Text>}</Text></TouchableOpacity>}
-            <View style={styles.menuDivider} />
-            
-            {!user ? (
-              <View style={{flexDirection: 'row', gap: 10}}>
-                <TouchableOpacity style={[styles.loginButtonMenu, {flex: 1}]} onPress={() => { setCurrentScreen('login'); setMenuOpen(false); }}><Text style={styles.loginButtonMenuText}>👤 LOG IND</Text></TouchableOpacity>
-                <TouchableOpacity style={[styles.loginButtonMenu, {flex: 1, backgroundColor: '#C5A059'}]} onPress={() => { setCurrentScreen('signup'); setMenuOpen(false); }}><Text style={styles.loginButtonMenuText}>✏️ OPRET</Text></TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity style={styles.loginButtonMenu} onPress={() => { auth.signOut().then(()=>setMenuOpen(false)); }}><Text style={styles.loginButtonMenuText}>LOG UD</Text></TouchableOpacity>
-            )}
+  const TopBarMenu = () => {
+    const liveMyPhoto = user ? getLiveAuthorPhoto(user.uid, userData?.photoURL || user?.photoURL) : '';
+    return (
+      <>
+        <TouchableOpacity onPress={() => setCurrentScreen('home')} style={styles.headerBannerContainer} activeOpacity={0.9}>
+          <Image source={{ uri: 'https://i.imgur.com/fpRHIje.png' }} style={styles.headerImageBanner} resizeMode="cover" />
+        </TouchableOpacity>
+
+        {/* Notifikationsbar */}
+        {activeNotifications.length > 0 && (
+          <View style={{backgroundColor: '#C5A059', paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: '#a68243'}}>
+            <Text style={{fontSize: 11, fontWeight: 'bold', color: '#111', textAlign: 'center'}}>🔔 {activeNotifications[0].text}</Text>
           </View>
-        </>
-      )}
-    </>
-  );
+        )}
+
+        <View style={styles.menuBar}>
+          <TouchableOpacity onPress={() => setMenuOpen(!menuOpen)} style={styles.menuBarButton}><Text style={styles.menuBarText}>{menuOpen ? '✖ LUK MENU' : '☰ MENU'} {!menuOpen && adminNotificationsCount > 0 && isAdmin && <Text style={{color: '#E30613'}}> 🔴</Text>}</Text></TouchableOpacity>
+          <TouchableOpacity onPress={handleManualRefresh} style={styles.refreshBarButton}><Text style={styles.refreshBarText}>🔄 GENINDLÆS</Text></TouchableOpacity>
+        </View>
+        {menuOpen && (
+          <>
+            <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuOpen(false)} />
+            <View style={styles.sideMenu}>
+              {user && (
+                <View style={styles.profileHeader}>
+                  <TouchableOpacity onPress={() => handleOpenProfile(user.uid)}><Image source={{ uri: liveMyPhoto }} style={styles.profileImage} /></TouchableOpacity>
+                  <Text style={styles.profileName}>{userData?.username || user.displayName || 'AB Fan'}</Text>
+                  <Text style={{color: '#C5A059', fontSize: 11, fontWeight: 'bold', marginBottom: 4}}>{isSuperAdmin ? 'Super Admin' : (userData?.role || 'Alm. Bruger')}</Text>
+                  {!hideFractions && userData?.fractions?.length > 0 && (<Text style={{color: '#fff', fontSize: 11, fontWeight: 'bold', marginBottom: 8, fontStyle: 'italic'}}>{userData.fractions.join(', ')}</Text>)}
+                  <TouchableOpacity style={styles.editProfileMenuBtn} onPress={() => { setUsername(userData?.username || ''); setAvatarUrl(userData?.photoURL || user?.photoURL || ''); setBio(userData?.bio || ''); setSignature(userData?.signature || ''); setCurrentScreen('editProfile'); setMenuOpen(false); }}><Text style={styles.editProfileMenuText}>✏️ REDIGER PROFIL</Text></TouchableOpacity>
+                </View>
+              )}
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('home'); setMenuOpen(false); }}><Text style={styles.menuItemText}>🏠 FORSIDE</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('tipspil'); setMenuOpen(false); }}><Text style={styles.menuItemText}>⚽ TIPSSPIL</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setSelectedThread(null); setSelectedCategory(null); setCurrentScreen('forum'); setMenuOpen(false); }}><Text style={styles.menuItemText}>💬 FORUM</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setSelectedSong(null); setShowSongForm(false); setCurrentScreen('songs'); setMenuOpen(false); }}><Text style={styles.menuItemText}>🎵 SANGE & TEKSTER</Text></TouchableOpacity>
+              {canViewAwayInfo && <TouchableOpacity style={styles.menuItem} onPress={() => { setSelectedAwayInfo(null); setCurrentScreen('awayInfo'); setMenuOpen(false); }}><Text style={styles.menuItemText}>🚌 AWAY INFO</Text></TouchableOpacity>}
+              {isAdmin && <TouchableOpacity style={styles.adminMenuBtn} onPress={() => { setCurrentScreen('adminHub'); setMenuOpen(false); }}><Text style={styles.adminMenuText}>🛠️ ADMIN PANEL {adminNotificationsCount > 0 && <Text style={{color: '#E30613'}}>🔴</Text>}</Text></TouchableOpacity>}
+              <View style={styles.menuDivider} />
+              
+              {!user ? (
+                <View style={{flexDirection: 'row', gap: 10}}>
+                  <TouchableOpacity style={[styles.loginButtonMenu, {flex: 1}]} onPress={() => { setCurrentScreen('login'); setMenuOpen(false); }}><Text style={styles.loginButtonMenuText}>👤 LOG IND</Text></TouchableOpacity>
+                  <TouchableOpacity style={[styles.loginButtonMenu, {flex: 1, backgroundColor: '#C5A059'}]} onPress={() => { setCurrentScreen('signup'); setMenuOpen(false); }}><Text style={styles.loginButtonMenuText}>✏️ OPRET</Text></TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity style={styles.loginButtonMenu} onPress={() => { auth.signOut().then(()=>setMenuOpen(false)); }}><Text style={styles.loginButtonMenuText}>LOG UD</Text></TouchableOpacity>
+              )}
+            </View>
+          </>
+        )}
+      </>
+    );
+  };
 
   if (currentScreen === 'home') {
     const nextMatchAwayInfo = nextMatch && nextMatch.awayTeam === 'AB' ? awayInfoList.find(a => a.matchId === nextMatch.id || a.opponent === nextMatch.homeTeam) : null;
@@ -295,13 +330,16 @@ export default function ClientScreens() {
 
           <View style={styles.homeLeaderboardCard}>
             <Text style={styles.sectionTitle}>🏆 Tipspil Top 3</Text>
-            {activeLeaderboard.slice(0, 3).map((item, index) => (
-              <TouchableOpacity key={item.id} onPress={() => handleOpenProfile(item.id)} style={styles.homeLbRow}>
-                <Image source={{ uri: item.photoURL }} style={styles.lbAvatar} />
-                <Text style={{flex: 1, fontWeight: 'bold', color: '#12352A'}}>{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`} {item.username}</Text>
-                <Text style={{fontWeight: '900', color: '#C5A059'}}>{item.points || 0} pts</Text>
-              </TouchableOpacity>
-            ))}
+            {activeLeaderboard.slice(0, 3).map((item, index) => {
+              const itemLivePhoto = getLiveAuthorPhoto(item.id, item.photoURL);
+              return (
+                <TouchableOpacity key={item.id} onPress={() => handleOpenProfile(item.id)} style={styles.homeLbRow}>
+                  <Image source={{ uri: itemLivePhoto }} style={styles.lbAvatar} />
+                  <Text style={{flex: 1, fontWeight: 'bold', color: '#12352A'}}>{index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `${index + 1}.`} {item.username}</Text>
+                  <Text style={{fontWeight: '900', color: '#C5A059'}}>{item.points || 0} pts</Text>
+                </TouchableOpacity>
+              );
+            })}
             {lastFinishedRoundName && lastRoundTopTipsters.length > 0 && (
               <View style={{marginTop: 15, borderTopWidth: 1, borderTopColor: '#F0F0EA', paddingTop: 10}}>
                 <Text style={{fontSize: 12, fontWeight: 'bold', color: '#12352A', marginBottom: 5}}>Bedst i {lastFinishedRoundName}:</Text>
@@ -363,7 +401,7 @@ export default function ClientScreens() {
           if (pSnap.exists) {
             const data = pSnap.data();
             if (data[match.id] && data[match.id].home !== undefined && data[match.id].home !== '') {
-              guesses.push({ username: doc.data().username, photoURL: doc.data().photoURL, home: data[match.id].home, away: data[match.id].away, earned: data[match.id].earnedPoints || 0, isDoubleUp: (data[match.round]?.dobbeltOpMatchId === match.id) });
+              guesses.push({ userId: doc.id, username: doc.data().username, photoURL: doc.data().photoURL, home: data[match.id].home, away: data[match.id].away, earned: data[match.id].earnedPoints || 0, isDoubleUp: (data[match.round]?.dobbeltOpMatchId === match.id) });
             }
           }
         }
@@ -420,17 +458,21 @@ export default function ClientScreens() {
                   </TouchableOpacity>
                 );
               })}
-              {hasActiveMatches && <TouchableOpacity style={styles.primaryButton} onPress={async () => { await db.collection('users').doc(user.uid).collection('predictions').doc('current').set(ctx.userPredictions, { merge: true }); alert("Gæt gemt!"); logActivity('tips', `${userData?.username || 'Bruger'} opdaterede sine tipspil-gæt`, userData?.username); }}><Text style={styles.primaryButtonText}>GEM MINE GÆT & DOBBELT OP</Text></TouchableOpacity>}
+              {hasActiveMatches && <TouchableOpacity style={styles.primaryButton} onPress={async () => { await db.collection('users').doc(user.uid).collection('predictions').doc('current').set(ctx.userPredictions, { merge: true }); showAlert("Succes", "Dine tipspil-gæt er gemt!"); logActivity('tips', `${userData?.username || 'Bruger'} opdaterede sine tipspil-gæt`, userData?.username); }}><Text style={styles.primaryButtonText}>GEM MINE GÆT & DOBBELT OP</Text></TouchableOpacity>}
             </>
           ) : <TouchableOpacity style={styles.primaryButton} onPress={() => setCurrentScreen('login')}><Text style={styles.primaryButtonText}>LOG IND FOR AT SPILLE</Text></TouchableOpacity>}
 
           <View style={{backgroundColor: '#FFFFFF', borderRadius: 12, padding: 15, marginTop: 25, marginBottom: 10, borderWidth: 1, borderColor: '#E5E5DF'}}>
             <Text style={{fontSize: 16, fontWeight: '800', color: '#12352A', marginBottom: 10, textTransform: 'uppercase'}}>🔥 Bedste Tippere ({selectedRound})</Text>
-            {roundLeaderboard.length > 0 && roundLeaderboard[0].roundPoints?.[selectedRound] ? roundLeaderboard.map((u, i) => (
-              <View key={u.id} style={{flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: '#F0F0EA'}}>
-                <Text style={{fontSize: 13, color: '#333'}}>{i + 1}. {u.username}</Text><Text style={{fontSize: 13, color: '#C5A059', fontWeight: 'bold'}}>{u.roundPoints[selectedRound]} pts</Text>
-              </View>
-            )) : <Text style={{fontStyle: 'italic', color: '#666', fontSize: 12}}>Ingen point uddelt endnu.</Text>}
+            {roundLeaderboard.length > 0 && roundLeaderboard[0].roundPoints?.[selectedRound] ? roundLeaderboard.map((u, i) => {
+              const uLivePhoto = getLiveAuthorPhoto(u.id, u.photoURL);
+              return (
+                <View key={u.id} style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4, borderBottomWidth: 1, borderBottomColor: '#F0F0EA'}}>
+                  <View style={{flexDirection: 'row', alignItems: 'center'}}><Image source={{uri: uLivePhoto}} style={{width: 20, height: 20, borderRadius: 10, marginRight: 6}} /><Text style={{fontSize: 13, color: '#333'}}>{i + 1}. {u.username}</Text></View>
+                  <Text style={{fontSize: 13, color: '#C5A059', fontWeight: 'bold'}}>{u.roundPoints[selectedRound]} pts</Text>
+                </View>
+              );
+            }) : <Text style={{fontStyle: 'italic', color: '#666', fontSize: 12}}>Ingen point uddelt endnu.</Text>}
           </View>
 
           <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10}}>
@@ -443,13 +485,14 @@ export default function ClientScreens() {
             const isMe = user && u.id === user.uid;
             const stats = u.stats || { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 };
             const hitPct = (stats.exactHits + stats.signHits + stats.misses) > 0 ? Math.round(((stats.exactHits + stats.signHits) / (stats.exactHits + stats.signHits + stats.misses)) * 100) : 0;
+            const uLivePhoto = getLiveAuthorPhoto(u.id, u.photoURL);
             return (
               <TouchableOpacity key={u.id} onPress={() => handleOpenProfile(u.id)} style={[styles.lbRow, isMe && styles.myLbRow]}>
                 <Text style={styles.lbRank}>{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`}</Text>
                 {showAdvancedLb ? (
                   <><Text style={[{flex: 1.5, fontWeight: 'bold', fontSize: 12}, isMe ? {color: '#FFFFFF'} : {color: '#12352A'}]} numberOfLines={1}>{u.username}</Text><Text style={{width: 35, textAlign: 'center', fontSize: 12, color: isMe ? '#eee' : '#555'}}>{stats.exactHits}</Text><Text style={{width: 35, textAlign: 'center', fontSize: 12, color: isMe ? '#eee' : '#555'}}>{stats.signHits}</Text><Text style={{width: 35, textAlign: 'center', fontSize: 12, color: isMe ? '#eee' : '#555'}}>{stats.misses}</Text><Text style={{width: 45, textAlign: 'center', fontSize: 12, fontWeight: 'bold', color: '#C5A059'}}>{hitPct}%</Text></>
                 ) : (
-                  <><Image source={{ uri: u.photoURL }} style={styles.lbAvatar} /><Text style={[{flex: 1, fontWeight: 'bold'}, isMe ? {color: '#FFFFFF'} : {color: '#12352A'}]}>{u.username}</Text><Text style={{fontWeight: '900', color: '#C5A059'}}>{u.points || 0} p</Text></>
+                  <><Image source={{ uri: uLivePhoto }} style={styles.lbAvatar} /><Text style={[{flex: 1, fontWeight: 'bold'}, isMe ? {color: '#FFFFFF'} : {color: '#12352A'}]}>{u.username}</Text><Text style={{fontWeight: '900', color: '#C5A059'}}>{u.points || 0} p</Text></>
                 )}
               </TouchableOpacity>
             )
@@ -462,12 +505,15 @@ export default function ClientScreens() {
                 <Text style={{marginBottom: 10, fontStyle: 'italic', color: '#666', textAlign: 'center'}}>{selectedMatchForGuesses?.homeTeam} vs {selectedMatchForGuesses?.awayTeam}</Text>
                 {isLoadingGuesses ? <Text>Henter gæt...</Text> : (
                   <ScrollView style={{maxHeight: 300, width: '100%'}}>
-                    {matchGuessesList.length > 0 ? matchGuessesList.map((g, index) => (
-                      <View key={index} style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eee'}}>
-                        <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}><Image source={{uri: g.photoURL}} style={{width: 20, height: 20, borderRadius: 10, marginRight: 8}} /><Text style={{fontWeight: 'bold', fontSize: 12}} numberOfLines={1}>{g.username} {g.isDoubleUp && '⭐'}</Text></View>
-                        <Text style={{color: '#12352A', fontWeight: 'bold', marginHorizontal: 10}}>{g.home} - {g.away}</Text><Text style={{color: '#C5A059', fontWeight: 'bold'}}>{g.earned} p</Text>
-                      </View>
-                    )) : <Text style={{textAlign: 'center', color: '#888'}}>Ingen gæt fundet for denne kamp.</Text>}
+                    {matchGuessesList.length > 0 ? matchGuessesList.map((g, index) => {
+                      const gLivePhoto = getLiveAuthorPhoto(g.userId, g.photoURL);
+                      return (
+                        <View key={index} style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#eee'}}>
+                          <View style={{flexDirection: 'row', alignItems: 'center', flex: 1}}><Image source={{uri: gLivePhoto}} style={{width: 20, height: 20, borderRadius: 10, marginRight: 8}} /><Text style={{fontWeight: 'bold', fontSize: 12}} numberOfLines={1}>{g.username} {g.isDoubleUp && '⭐'}</Text></View>
+                          <Text style={{color: '#12352A', fontWeight: 'bold', marginHorizontal: 10}}>{g.home} - {g.away}</Text><Text style={{color: '#C5A059', fontWeight: 'bold'}}>{g.earned} p</Text>
+                        </View>
+                      );
+                    }) : <Text style={{textAlign: 'center', color: '#888'}}>Ingen gæt fundet for denne kamp.</Text>}
                   </ScrollView>
                 )}
                 <TouchableOpacity style={[styles.primaryButton, {width: '100%', marginTop: 15}]} onPress={() => setShowGuessesModal(false)}><Text style={styles.primaryButtonText}>LUK</Text></TouchableOpacity>
@@ -497,6 +543,7 @@ export default function ClientScreens() {
 
   if (currentScreen === 'forum') {
     if (selectedThread) {
+      const threadLivePhoto = getLiveAuthorPhoto(selectedThread.authorId, selectedThread.authorPhoto);
       return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
           <TopBarMenu />
@@ -504,11 +551,11 @@ export default function ClientScreens() {
             <TouchableOpacity onPress={() => setSelectedThread(null)} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE TIL TRÅDE</Text></TouchableOpacity>
             <View style={styles.detailCard}>
               <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 10}}>
-                <TouchableOpacity onPress={() => handleOpenProfile(selectedThread.authorId)}><Image source={{uri: selectedThread.authorPhoto}} style={{width: 35, height: 35, borderRadius: 17.5, marginRight: 10, borderWidth: 1, borderColor: '#C5A059'}} /></TouchableOpacity>
+                <TouchableOpacity onPress={() => handleOpenProfile(selectedThread.authorId)}><Image source={{uri: threadLivePhoto}} style={{width: 35, height: 35, borderRadius: 17.5, marginRight: 10, borderWidth: 1, borderColor: '#C5A059'}} /></TouchableOpacity>
                 <View style={{flex: 1}}>
                   <TouchableOpacity onPress={() => handleOpenProfile(selectedThread.authorId)}><Text style={{fontWeight: 'bold', color: '#12352A'}}>{selectedThread.authorName}</Text></TouchableOpacity>
                   <Text style={{fontSize: 10, color: '#C5A059', fontWeight: 'bold'}}>{selectedThread.authorRole}</Text>
-                  {selectedThread.authorFractions?.length > 0 && <Text style={{fontSize: 10, color: '#666', fontStyle: 'italic'}}>{selectedThread.authorFractions.join(', ')}</Text>}
+                  {selectedThread.authorFractions?.length > 0 && <Text style={{fontSize: 10, color: '#12352A', fontWeight: 'bold', fontStyle: 'italic'}}>{selectedThread.authorFractions.join(', ')}</Text>}
                 </View>
                 {user && user.uid !== selectedThread.authorId && (<TouchableOpacity onPress={() => openUGCMenu('thread', selectedThread.id, selectedThread.authorId, selectedThread.authorName)}><Text style={{color: '#8A1C1C', fontSize: 16}}>⚠</Text></TouchableOpacity>)}
                 {(isAdmin || user?.uid === selectedThread.authorId) && (<TouchableOpacity style={{marginLeft: 15}} onPress={() => Alert.alert("Slet", "Vil du slette?", [{ text: "Annuller" }, { text: "Slet", style: "destructive", onPress: async () => { await db.collection('forum_threads').doc(selectedThread.id).delete(); setSelectedThread(null); }}])}><Text style={{color: '#8A1C1C', fontWeight: 'bold', fontSize: 12}}>SLET</Text></TouchableOpacity>)}
@@ -520,25 +567,28 @@ export default function ClientScreens() {
             </View>
 
             <Text style={[styles.sectionTitle, {marginTop: 20}]}>Svar ({visibleReplies.length})</Text>
-            {visibleReplies.map((r) => (
-              <View key={r.id} style={styles.commentRow}>
-                <TouchableOpacity onPress={() => handleOpenProfile(r.authorId)}><Image source={{ uri: r.authorPhoto }} style={styles.commentAvatar} /></TouchableOpacity>
-                <View style={{flex: 1}}>
-                  <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
-                    <TouchableOpacity onPress={() => handleOpenProfile(r.authorId)}>
-                      <Text style={styles.commentUser}>{r.authorName}</Text><Text style={{fontSize: 9, color: '#C5A059', fontWeight: 'bold'}}>{r.authorRole}</Text>
-                      {r.authorFractions?.length > 0 && <Text style={{fontSize: 9, color: '#888', fontStyle: 'italic'}}>{r.authorFractions.join(', ')}</Text>}
-                    </TouchableOpacity>
-                    <View style={{flexDirection: 'row'}}>
-                      {user && user.uid !== r.authorId && (<TouchableOpacity onPress={() => openUGCMenu('reply', r.id, r.authorId, r.authorName)}><Text style={{color: '#8A1C1C', fontSize: 14, marginRight: 10}}>⚠</Text></TouchableOpacity>)}
-                      {(isAdmin || user?.uid === r.authorId) && (<TouchableOpacity onPress={() => Alert.alert("Slet", "Vil du slette?", [{ text: "Annuller" }, { text: "Slet", style: "destructive", onPress: async () => { await db.collection('forum_threads').doc(selectedThread.id).collection('replies').doc(r.id).delete(); }}])}><Text style={{color: '#8A1C1C', fontSize: 10, fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>)}
+            {visibleReplies.map((r) => {
+              const replyLivePhoto = getLiveAuthorPhoto(r.authorId, r.authorPhoto);
+              return (
+                <View key={r.id} style={styles.commentRow}>
+                  <TouchableOpacity onPress={() => handleOpenProfile(r.authorId)}><Image source={{ uri: replyLivePhoto }} style={styles.commentAvatar} /></TouchableOpacity>
+                  <View style={{flex: 1}}>
+                    <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+                      <TouchableOpacity onPress={() => handleOpenProfile(r.authorId)}>
+                        <Text style={styles.commentUser}>{r.authorName}</Text><Text style={{fontSize: 9, color: '#C5A059', fontWeight: 'bold'}}>{r.authorRole}</Text>
+                        {r.authorFractions?.length > 0 && <Text style={{fontSize: 9, color: '#12352A', fontWeight: 'bold', fontStyle: 'italic'}}>{r.authorFractions.join(', ')}</Text>}
+                      </TouchableOpacity>
+                      <View style={{flexDirection: 'row'}}>
+                        {user && user.uid !== r.authorId && (<TouchableOpacity onPress={() => openUGCMenu('reply', r.id, r.authorId, r.authorName)}><Text style={{color: '#8A1C1C', fontSize: 14, marginRight: 10}}>⚠</Text></TouchableOpacity>)}
+                        {(isAdmin || user?.uid === r.authorId) && (<TouchableOpacity onPress={() => Alert.alert("Slet", "Vil du slette?", [{ text: "Annuller" }, { text: "Slet", style: "destructive", onPress: async () => { await db.collection('forum_threads').doc(selectedThread.id).collection('replies').doc(r.id).delete(); }}])}><Text style={{color: '#8A1C1C', fontSize: 10, fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>)}
+                      </View>
                     </View>
+                    <Text style={[styles.commentText, {marginTop: 4}]}>{r.content}</Text>
+                    {r.authorSignature ? <Text style={{fontSize: 10, color: '#888', fontStyle: 'italic', marginTop: 4}}>{r.authorSignature}</Text> : null}
                   </View>
-                  <Text style={[styles.commentText, {marginTop: 4}]}>{r.content}</Text>
-                  {r.authorSignature ? <Text style={{fontSize: 10, color: '#888', fontStyle: 'italic', marginTop: 4}}>{r.authorSignature}</Text> : null}
                 </View>
-              </View>
-            ))}
+              );
+            })}
 
             {user ? (
               ctx.appSettings.forumLocked && !isAdmin ? (<Text style={{color: '#E30613', fontStyle: 'italic', textAlign: 'center', marginVertical: 15}}>Forummet er midlertidigt låst for nye indlæg.</Text>) : (
@@ -585,7 +635,7 @@ export default function ClientScreens() {
                   <Text style={[styles.sectionTitle, {fontSize: 14, marginTop: 0}]}>Opret ny debat</Text>
                   <TextInput style={styles.inputField} placeholder="Titel på debat" placeholderTextColor="#888" value={newThreadTitle} onChangeText={setNewThreadTitle} />
                   <TextInput style={[styles.inputField, {height: 80, textAlignVertical: 'top'}]} placeholder="Hvad vil du drøfte?" placeholderTextColor="#888" multiline value={newThreadContent} onChangeText={setNewThreadContent} />
-                  <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!newThreadTitle.trim() || !newThreadContent.trim()) return alert("Udfyld felter."); await db.collection('forum_threads').add({ categoryId: selectedCategory.id, title: newThreadTitle, content: newThreadContent, authorId: user.uid, authorName: userData?.username || 'Fan', authorPhoto: userData?.photoURL || '', authorRole: isSuperAdmin ? 'Super Admin' : (userData?.role || 'Alm. Bruger'), authorFractions: userData?.hideFractions ? [] : (userData?.fractions || []), authorSignature: userData?.signature || '', createdAt: firebase.firestore.FieldValue.serverTimestamp() }); setNewThreadTitle(''); setNewThreadContent(''); alert("Debat oprettet!"); }}><Text style={styles.primaryButtonText}>OPRET DEBAT</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!newThreadTitle.trim() || !newThreadContent.trim()) return showAlert("Fejl", "Udfyld alle felter."); await db.collection('forum_threads').add({ categoryId: selectedCategory.id, title: newThreadTitle, content: newThreadContent, authorId: user.uid, authorName: userData?.username || 'Fan', authorPhoto: userData?.photoURL || '', authorRole: isSuperAdmin ? 'Super Admin' : (userData?.role || 'Alm. Bruger'), authorFractions: userData?.hideFractions ? [] : (userData?.fractions || []), authorSignature: userData?.signature || '', createdAt: firebase.firestore.FieldValue.serverTimestamp() }); setNewThreadTitle(''); setNewThreadContent(''); showAlert("Succes", "Debat oprettet!"); }}><Text style={styles.primaryButtonText}>OPRET DEBAT</Text></TouchableOpacity>
                 </View>
               )
             ) : (
@@ -700,7 +750,7 @@ export default function ClientScreens() {
                     <TextInput style={[styles.inputField, {height: 80, textAlignVertical: 'top'}]} placeholder="Sangtekst..." placeholderTextColor="#888" multiline value={newSongLyrics} onChangeText={setNewSongLyrics} />
                     <TextInput style={styles.inputField} placeholder="Melodi (f.eks. 'Yellow Submarine')" placeholderTextColor="#888" value={newSongMelody} onChangeText={setNewSongMelody} />
                     <TextInput style={styles.inputField} placeholder="Link til YouTube/Lydfil (Valgfrit)" placeholderTextColor="#888" value={newSongLink} onChangeText={setNewSongLink} />
-                    <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!newSongTitle.trim() || !newSongLyrics.trim()) return alert("Udfyld titel og sangtekst."); await db.collection('songs').add({ title: newSongTitle, lyrics: newSongLyrics, link: newSongLink.trim(), melody: newSongMelody.trim(), approved: false, submittedBy: userData?.username || 'Fan', createdAt: firebase.firestore.FieldValue.serverTimestamp() }); setNewSongTitle(''); setNewSongLyrics(''); setNewSongLink(''); setNewSongMelody(''); setShowSongForm(false); alert("Forslag indsendt!"); }}><Text style={styles.primaryButtonText}>INDSEND TIL GODKENDELSE</Text></TouchableOpacity>
+                    <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!newSongTitle.trim() || !newSongLyrics.trim()) return showAlert("Fejl", "Udfyld titel og sangtekst."); await db.collection('songs').add({ title: newSongTitle, lyrics: newSongLyrics, link: newSongLink.trim(), melody: newSongMelody.trim(), approved: false, submittedBy: userData?.username || 'Fan', createdAt: firebase.firestore.FieldValue.serverTimestamp() }); setNewSongTitle(''); setNewSongLyrics(''); setNewSongLink(''); setNewSongMelody(''); setShowSongForm(false); showAlert("Succes", "Forslag indsendt til godkendelse!"); }}><Text style={styles.primaryButtonText}>INDSEND TIL GODKENDELSE</Text></TouchableOpacity>
                   </View>
                )}
             </View>
@@ -789,22 +839,25 @@ export default function ClientScreens() {
             </View>
           )}
           <Text style={[styles.sectionTitle, {marginTop: 20}]}>Kommentarer ({visibleNewsComments.length})</Text>
-          {visibleNewsComments.map((c) => (
-            <View key={c.id} style={styles.commentRow}>
-              <TouchableOpacity onPress={() => handleOpenProfile(c.authorId)}><Image source={{ uri: c.authorPhoto }} style={styles.commentAvatar} /></TouchableOpacity>
-              <View style={{flex: 1}}>
-                <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
-                  <TouchableOpacity onPress={() => handleOpenProfile(c.authorId)}><Text style={styles.commentUser}>{c.authorName} <Text style={{fontSize: 9, color: '#C5A059'}}>({c.authorRole})</Text></Text></TouchableOpacity>
-                  <View style={{flexDirection: 'row'}}>
-                    {user && user.uid !== c.authorId && (<TouchableOpacity onPress={() => openUGCMenu('news_comment', c.id, c.authorId, c.authorName)}><Text style={{color: '#8A1C1C', fontSize: 14, marginRight: 10}}>⚠</Text></TouchableOpacity>)}
-                    {(isAdmin || user?.uid === c.authorId) && (<TouchableOpacity onPress={() => Alert.alert("Slet", "Vil du slette kommentaren?", [{ text: "Annuller" }, { text: "Slet", style: "destructive", onPress: async () => await db.collection('news').doc(selectedNews.id).collection('comments').doc(c.id).delete() }])}><Text style={{color: '#8A1C1C', fontSize: 10, fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>)}
+          {visibleNewsComments.map((c) => {
+            const commentLivePhoto = getLiveAuthorPhoto(c.authorId, c.authorPhoto);
+            return (
+              <View key={c.id} style={styles.commentRow}>
+                <TouchableOpacity onPress={() => handleOpenProfile(c.authorId)}><Image source={{ uri: commentLivePhoto }} style={styles.commentAvatar} /></TouchableOpacity>
+                <View style={{flex: 1}}>
+                  <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
+                    <TouchableOpacity onPress={() => handleOpenProfile(c.authorId)}><Text style={styles.commentUser}>{c.authorName} <Text style={{fontSize: 9, color: '#C5A059'}}>({c.authorRole})</Text></Text></TouchableOpacity>
+                    <View style={{flexDirection: 'row'}}>
+                      {user && user.uid !== c.authorId && (<TouchableOpacity onPress={() => openUGCMenu('news_comment', c.id, c.authorId, c.authorName)}><Text style={{color: '#8A1C1C', fontSize: 14, marginRight: 10}}>⚠</Text></TouchableOpacity>)}
+                      {(isAdmin || user?.uid === c.authorId) && (<TouchableOpacity onPress={() => Alert.alert("Slet", "Vil du slette kommentaren?", [{ text: "Annuller" }, { text: "Slet", style: "destructive", onPress: async () => await db.collection('news').doc(selectedNews.id).collection('comments').doc(c.id).delete() }])}><Text style={{color: '#8A1C1C', fontSize: 10, fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>)}
+                    </View>
                   </View>
+                  <Text style={styles.commentText}>{c.content}</Text>
+                  {c.authorSignature ? <Text style={{fontSize: 10, color: '#888', fontStyle: 'italic', marginTop: 4}}>{c.authorSignature}</Text> : null}
                 </View>
-                <Text style={styles.commentText}>{c.content}</Text>
-                {c.authorSignature ? <Text style={{fontSize: 10, color: '#888', fontStyle: 'italic', marginTop: 4}}>{c.authorSignature}</Text> : null}
               </View>
-            </View>
-          ))}
+            );
+          })}
           {user ? (
             <View style={styles.commentInputContainer}>
               <TextInput style={styles.commentInput} placeholder="Skriv en kommentar..." placeholderTextColor="#888" value={newNewsComment} onChangeText={setNewNewsComment} />
@@ -828,8 +881,8 @@ export default function ClientScreens() {
           <TextInput style={styles.inputField} placeholder="E-mail" placeholderTextColor="#888" autoCapitalize="none" value={email} onChangeText={setEmail} />
           <TextInput style={styles.inputField} placeholder="Adgangskode" placeholderTextColor="#888" secureTextEntry value={password} onChangeText={setPassword} />
           <TouchableOpacity style={styles.checkboxRow} onPress={() => setRememberMe(!rememberMe)}><View style={[styles.checkboxBox, rememberMe && styles.checkboxChecked]}>{rememberMe && <Text style={{color: '#fff', fontSize: 12, fontWeight: 'bold'}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Husk mig på enheden</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!email || !password) return alert("Udfyld e-mail og kodeord"); try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); await auth.signInWithEmailAndPassword(email, password); setCurrentScreen('home'); setEmail(''); setPassword(''); } catch (error) { alert(error.message); } }}><Text style={styles.primaryButtonText}>LOG IND</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.googleButton} onPress={async () => { try { const provider = new firebase.auth.GoogleAuthProvider(); await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); const result = await auth.signInWithPopup(provider); const u = result.user; const userDoc = await db.collection('users').doc(u.uid).get(); if (!userDoc.exists) { const newUserData = { uid: u.uid, username: u.displayName || 'Google Fan', email: u.email, photoURL: u.photoURL || 'https://via.placeholder.com/150', points: 0, role: u.email === 'schaldeab@gmail.com' ? 'Super Admin' : 'Alm. Bruger', fractions: [], bio: '', signature: '', hideFractions: false, banned: false, bannedUntil: null, blockedUsers: [], stats: { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }, roundPoints: {}, createdAt: firebase.firestore.FieldValue.serverTimestamp() }; await db.collection('users').doc(u.uid).set(newUserData); setUserData(newUserData); } setCurrentScreen('home'); } catch (error) { alert("Google login fejl: " + error.message); } }}><Text style={styles.googleButtonText}>🔵 LOG IND MED GOOGLE</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!email || !password) return showAlert("Fejl", "Udfyld e-mail og adgangskode."); try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); await auth.signInWithEmailAndPassword(email, password); setCurrentScreen('home'); setEmail(''); setPassword(''); } catch (error) { showAlert("Login fejl", error.message); } }}><Text style={styles.primaryButtonText}>LOG IND</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.googleButton} onPress={async () => { try { const provider = new firebase.auth.GoogleAuthProvider(); await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); const result = await auth.signInWithPopup(provider); const u = result.user; const userDoc = await db.collection('users').doc(u.uid).get(); if (!userDoc.exists) { const newUserData = { uid: u.uid, username: u.displayName || 'Google Fan', email: u.email, photoURL: u.photoURL || 'https://via.placeholder.com/150', points: 0, role: u.email === 'schaldeab@gmail.com' ? 'Super Admin' : 'Alm. Bruger', fractions: [], bio: '', signature: '', hideFractions: false, banned: false, bannedUntil: null, blockedUsers: [], stats: { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }, roundPoints: {}, createdAt: firebase.firestore.FieldValue.serverTimestamp() }; await db.collection('users').doc(u.uid).set(newUserData); setUserData(newUserData); } setCurrentScreen('home'); } catch (error) { showAlert("Google login fejl", error.message); } }}><Text style={styles.googleButtonText}>🔵 LOG IND MED GOOGLE</Text></TouchableOpacity>
           <TouchableOpacity style={[styles.secondaryButton, {marginTop: 20}]} onPress={() => setCurrentScreen('signup')}><Text style={styles.secondaryButtonText}>Har du ikke en konto? Opret her</Text></TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -848,7 +901,7 @@ export default function ClientScreens() {
           <TextInput style={styles.inputField} placeholder="E-mail" placeholderTextColor="#888" autoCapitalize="none" value={email} onChangeText={setEmail} />
           <TextInput style={styles.inputField} placeholder="Adgangskode" placeholderTextColor="#888" secureTextEntry value={password} onChangeText={setPassword} />
           <TextInput style={styles.inputField} placeholder="Bekræft adgangskode" placeholderTextColor="#888" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
-          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!username || !email || !password || !confirmPassword) return alert("Udfyld alle felter."); if (password !== confirmPassword) return alert("Adgangskoderne er ikke ens."); setIsUploading(true); try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); const userCredential = await auth.createUserWithEmailAndPassword(email, password); let finalPhotoUrl = avatarUrl.trim() !== '' ? avatarUrl.trim() : `https://via.placeholder.com/150/12352A/FFFFFF?text=${username.charAt(0).toUpperCase()}`; await userCredential.user.updateProfile({ displayName: username, photoURL: finalPhotoUrl }); let assignedRole = email === 'schaldeab@gmail.com' ? 'Super Admin' : 'Alm. Bruger'; const newUserData = { uid: userCredential.user.uid, username, email, photoURL: finalPhotoUrl, points: 0, role: assignedRole, fractions: [], bio: '', signature: '', hideFractions: false, banned: false, bannedUntil: null, blockedUsers: [], stats: { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }, roundPoints: {}, createdAt: firebase.firestore.FieldValue.serverTimestamp() }; await db.collection('users').doc(userCredential.user.uid).set(newUserData); setUserData(newUserData); setCurrentScreen('home'); setUsername(''); setEmail(''); setPassword(''); setConfirmPassword(''); setAvatarUrl(''); } catch (error) { alert(error.message); } finally { setIsUploading(false); } }}><Text style={styles.primaryButtonText}>OPRET</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!username || !email || !password || !confirmPassword) return showAlert("Fejl", "Udfyld alle felter."); if (password !== confirmPassword) return showAlert("Fejl", "Adgangskoderne er ikke ens."); setIsUploading(true); try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); const userCredential = await auth.createUserWithEmailAndPassword(email, password); let finalPhotoUrl = avatarUrl.trim() !== '' ? avatarUrl.trim() : `https://via.placeholder.com/150/12352A/FFFFFF?text=${username.charAt(0).toUpperCase()}`; await userCredential.user.updateProfile({ displayName: username, photoURL: finalPhotoUrl }); let assignedRole = email === 'schaldeab@gmail.com' ? 'Super Admin' : 'Alm. Bruger'; const newUserData = { uid: userCredential.user.uid, username, email, photoURL: finalPhotoUrl, points: 0, role: assignedRole, fractions: [], bio: '', signature: '', hideFractions: false, banned: false, bannedUntil: null, blockedUsers: [], stats: { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }, roundPoints: {}, createdAt: firebase.firestore.FieldValue.serverTimestamp() }; await db.collection('users').doc(userCredential.user.uid).set(newUserData); setUserData(newUserData); setCurrentScreen('home'); setUsername(''); setEmail(''); setPassword(''); setConfirmPassword(''); setAvatarUrl(''); } catch (error) { showAlert("Fejl", error.message); } finally { setIsUploading(false); } }}><Text style={styles.primaryButtonText}>OPRET</Text></TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -867,7 +920,7 @@ export default function ClientScreens() {
           <TextInput style={styles.inputField} placeholder="Signatur (vises i bunden af indlæg)" value={signature} onChangeText={setSignature} />
           <TouchableOpacity style={[styles.checkboxRow, {marginBottom: 20}]} onPress={() => setHideFractions(!hideFractions)}><View style={[styles.checkboxBox, hideFractions && styles.checkboxChecked]}>{hideFractions && <Text style={{color: '#fff', fontSize: 12}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Skjul mine fanfraktioner</Text></TouchableOpacity>
           
-          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!username) return alert("Brugernavn påkrævet."); setIsUploading(true); try { const currentUser = auth.currentUser; let finalPhotoUrl = avatarUrl.trim() !== '' ? avatarUrl.trim() : currentUser.photoURL; await currentUser.updateProfile({ displayName: username, photoURL: finalPhotoUrl }); await db.collection('users').doc(currentUser.uid).set({ uid: currentUser.uid, username, photoURL: finalPhotoUrl, bio, signature, hideFractions }, { merge: true }); setUserData({ ...userData, username, photoURL: finalPhotoUrl, bio, signature, hideFractions }); setCurrentScreen('home'); alert("Profil opdateret!"); } catch (error) { alert(error.message); } finally { setIsUploading(false); } }}><Text style={styles.primaryButtonText}>GEM ÆNDRINGER</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!username) return showAlert("Fejl", "Brugernavn påkrævet."); setIsUploading(true); try { const currentUser = auth.currentUser; let finalPhotoUrl = avatarUrl.trim() !== '' ? avatarUrl.trim() : currentUser.photoURL; await currentUser.updateProfile({ displayName: username, photoURL: finalPhotoUrl }); await db.collection('users').doc(currentUser.uid).set({ uid: currentUser.uid, username, photoURL: finalPhotoUrl, bio, signature, hideFractions }, { merge: true }); setUserData({ ...userData, username, photoURL: finalPhotoUrl, bio, signature, hideFractions }); setCurrentScreen('home'); showAlert("Succes", "Profil opdateret!"); } catch (error) { showAlert("Fejl", error.message); } finally { setIsUploading(false); } }}><Text style={styles.primaryButtonText}>GEM ÆNDRINGER</Text></TouchableOpacity>
           <View style={{height: 40}} />
         </ScrollView>
       </KeyboardAvoidingView>
