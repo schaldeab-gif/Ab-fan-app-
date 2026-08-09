@@ -4,11 +4,12 @@ import { AppContext } from './AppContext';
 import firebase from 'firebase';
 import { db, auth, storage } from './FirebaseConfig';
 import { styles } from './styles';
+import { INITIAL_TEAM_DB } from './teamDatabase';
 import * as ImagePicker from 'expo-image-picker';
 
 export default function ClientScreens() {
   const ctx = useContext(AppContext);
-  const { currentScreen, setCurrentScreen, user, userData, setUserData, leaderboard, matchesList, newsList, rssNews, forumCategories, allThreads, songsList, awayInfoList, usersList, formatDanishDate, getTeamLogo, getTeamStyle, getStadium, setMenuOpen, menuOpen, handleManualRefresh, nextMatch, upcomingMatchesToDisplay, isMatchLocked, logActivity, showAlert } = ctx;
+  const { currentScreen, setCurrentScreen, user, userData, setUserData, leaderboard, matchesList, newsList, rssNews, forumCategories, allThreads, songsList, awayInfoList, usersList, formatDanishDate, getTeamLogo, getTeamStyle, getStadium, setMenuOpen, menuOpen, handleManualRefresh, nextMatch, upcomingMatchesToDisplay, isMatchLocked, logActivity, showAlert, customTeams } = ctx;
 
   const [selectedNews, setSelectedNews] = useState(null);
   const [newsComments, setNewsComments] = useState([]);
@@ -41,6 +42,13 @@ export default function ClientScreens() {
   const [hideFractions, setHideFractions] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Helper til at hente holdets valgte visningsnavn
+  const getTeamDisplayName = (teamName) => {
+    if (!teamName) return '';
+    const TEAM_DB = { ...INITIAL_TEAM_DB, ...customTeams };
+    return TEAM_DB[teamName]?.displayName || TEAM_DB[teamName]?.name || teamName;
+  };
+
   // Notifikationsindstillinger state
   const [notifNews, setNotifNews] = useState(userData?.notifPreferences?.news ?? true);
   const [notifAway, setNotifAway] = useState(userData?.notifPreferences?.away ?? true);
@@ -64,7 +72,7 @@ export default function ClientScreens() {
     ).start();
   }, [pulseAnim]);
 
-  const [selectedRound, setSelectedRound] = useState('Runde 1');
+  const [selectedRound, setSelectedRound] = useState('1. Runde');
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showGuessesModal, setShowGuessesModal] = useState(false);
   const [selectedMatchForGuesses, setSelectedMatchForGuesses] = useState(null);
@@ -141,7 +149,7 @@ export default function ClientScreens() {
         const target = unreadAway[0];
         notifs.push({
           id: 'away_' + target.id,
-          text: `🚌 Ny away info: (${target.opponent || target.matchDetails?.homeTeam || 'Udebane'})`,
+          text: `🚌 Ny away info: (${getTeamDisplayName(target.opponent || target.matchDetails?.homeTeam) || 'Udebane'})`,
           onPress: () => {
             setShowNotifDropdown(false);
             const updatedSeenAway = [...seenAway, target.id];
@@ -204,7 +212,6 @@ export default function ClientScreens() {
   };
   const activeNotifications = getNotifications();
 
-  // Automatisk rotation af notifikationer hvert 10. sekund med smooth fade
   useEffect(() => {
     if (activeNotifications.length <= 1) return;
     const timer = setInterval(() => {
@@ -348,7 +355,6 @@ export default function ClientScreens() {
           <Image source={{ uri: 'https://i.imgur.com/fpRHIje.png' }} style={styles.headerImageBanner} resizeMode="cover" />
         </TouchableOpacity>
 
-        {/* Notifikationsbar med samlet antal, enkeltvis rullende notifikation og dropdown pil */}
         <View style={{backgroundColor: '#12352A', paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#C5A059'}}>
           <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
             <View style={{flex: 1}}>
@@ -372,7 +378,6 @@ export default function ClientScreens() {
             )}
           </View>
 
-          {/* Dropdown menu med alle notifikationer */}
           {showNotifDropdown && activeNotifications.length > 0 && (
             <View style={{marginTop: 8, borderTopWidth: 1, borderTopColor: '#C5A059', paddingTop: 6}}>
               {activeNotifications.map(n => (
@@ -445,7 +450,7 @@ export default function ClientScreens() {
             <View style={styles.matchWidgetTopBar}><Text style={styles.matchWidgetHeader}>⚽ NÆSTE KAMP</Text></View>
             {nextMatch ? (
               <View style={styles.matchWidgetBody}>
-                <View style={styles.matchTeamColumn}><Image source={{ uri: getTeamLogo(nextMatch.homeTeam) }} style={styles.matchTeamLogo} resizeMode="contain" /><Text style={styles.matchTeamName}>{nextMatch.homeTeam}</Text></View>
+                <View style={styles.matchTeamColumn}><Image source={{ uri: getTeamLogo(nextMatch.homeTeam) }} style={styles.matchTeamLogo} resizeMode="contain" /><Text style={styles.matchTeamName}>{getTeamDisplayName(nextMatch.homeTeam)}</Text></View>
                 <View style={styles.matchInfoColumn}>
                   <Text style={styles.matchTournamentBadge}>{nextMatch.tournament}</Text>
                   <Text style={styles.vsText}>VS</Text>
@@ -457,7 +462,7 @@ export default function ClientScreens() {
                   <Text style={styles.matchStadiumText}>📍 {nextMatch.alternativeStadium || getStadium(nextMatch.homeTeam)}</Text>
                   {canViewAwayInfo && nextMatchAwayInfo && <TouchableOpacity onPress={() => { setSelectedAwayInfo(nextMatchAwayInfo); setCurrentScreen('awayInfo'); }} style={{backgroundColor: '#12352A', padding: 6, borderRadius: 4, marginTop: 8}}><Text style={{color: '#C5A059', fontSize: 10, fontWeight: 'bold'}}>🚌 SE AWAY INFO</Text></TouchableOpacity>}
                 </View>
-                <View style={styles.matchTeamColumn}><Image source={{ uri: getTeamLogo(nextMatch.awayTeam) }} style={styles.matchTeamLogo} resizeMode="contain" /><Text style={styles.matchTeamName}>{nextMatch.awayTeam}</Text></View>
+                <View style={styles.matchTeamColumn}><Image source={{ uri: getTeamLogo(nextMatch.awayTeam) }} style={styles.matchTeamLogo} resizeMode="contain" /><Text style={styles.matchTeamName}>{getTeamDisplayName(nextMatch.awayTeam)}</Text></View>
               </View>
             ) : <Text style={{textAlign: 'center', color: '#666', fontStyle: 'italic', padding: 15}}>Ingen kommende kampe fundet.</Text>}
           </View>
@@ -477,8 +482,8 @@ export default function ClientScreens() {
                   <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F0F0EA' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                       <Image source={{ uri: getTeamLogo(m.homeTeam) }} style={{ width: 25, height: 25, marginRight: 5 }} resizeMode="contain" />
-                      <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#12352A' }}>{m.homeTeam}</Text><Text style={{ fontSize: 10, marginHorizontal: 5, color: '#888' }}>vs</Text>
-                      <Image source={{ uri: getTeamLogo(m.awayTeam) }} style={{ width: 25, height: 25, marginRight: 5 }} resizeMode="contain" /><Text style={{ fontSize: 12, fontWeight: 'bold', color: '#12352A' }}>{m.awayTeam}</Text>
+                      <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#12352A' }}>{getTeamDisplayName(m.homeTeam)}</Text><Text style={{ fontSize: 10, marginHorizontal: 5, color: '#888' }}>vs</Text>
+                      <Image source={{ uri: getTeamLogo(m.awayTeam) }} style={{ width: 25, height: 25, marginRight: 5 }} resizeMode="contain" /><Text style={{ fontSize: 12, fontWeight: 'bold', color: '#12352A' }}>{getTeamDisplayName(m.awayTeam)}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
                       {isItemLive ? (
@@ -611,7 +616,7 @@ export default function ClientScreens() {
 
                 return (
                   <TouchableOpacity activeOpacity={locked ? 0.7 : 1} onPress={() => locked && openGuessesModal(m)} key={m.id} style={[styles.matchCard, isDoubleUp && {borderColor: '#C5A059', borderWidth: 2}, locked && {opacity: 0.9, backgroundColor: '#F0F0EA'}]}>
-                    <View style={{marginBottom: 4}}><Text style={{fontSize: 10, color: '#12352A', fontWeight: '900', textTransform: 'uppercase'}}>{m.tournament || 'Betinia Liga'}</Text></View>
+                    <View style={{marginBottom: 4}}><Text style={{fontSize: 10, color: '#12352A', fontWeight: '900', textTransform: 'uppercase'}}>{m.tournament || '1. Division'}</Text></View>
                     <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, alignItems: 'flex-start', flexWrap: 'wrap', gap: 6}}>
                       {isMatchItemLive ? (
                         <Animated.Text style={{ color: '#2E7D32', fontWeight: '900', fontSize: 14, opacity: pulseAnim }}>🔴 LIVE</Animated.Text>
@@ -627,7 +632,6 @@ export default function ClientScreens() {
                       )}
                     </View>
 
-                    {/* Hvis kampen er færdigspillet, vis stort resultat og farvekodet gæt */}
                     {m.finalScore ? (
                       <View style={{alignItems: 'center', marginVertical: 8, backgroundColor: '#F7F7F2', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#E5E5DF'}}>
                         <Text style={{fontSize: 10, fontWeight: 'bold', color: '#666', textTransform: 'uppercase', marginBottom: 2}}>Endeligt Resultat</Text>
@@ -638,16 +642,16 @@ export default function ClientScreens() {
                           const pH = userPred.home !== '' ? parseInt(userPred.home, 10) : null;
                           const pA = userPred.away !== '' ? parseInt(userPred.away, 10) : null;
 
-                          let bgCol = '#E30613'; // Rød for forkert
+                          let bgCol = '#E30613';
                           let txtDesc = 'Forkert (0 p)';
                           if (pH !== null && pA !== null) {
                             const isExact = pH === m.homeScore && pA === m.awayScore;
                             const isSign = !isExact && ((pH > pA && m.homeScore > m.awayScore) || (pH < pA && m.homeScore < m.awayScore) || (pH === pA && m.homeScore === m.awayScore));
                             if (isExact) {
-                              bgCol = '#12352A'; // Mørkegrønt for præcist
+                              bgCol = '#12352A';
                               txtDesc = 'Præcist gæt! (3 pts)';
                             } else if (isSign) {
-                              bgCol = '#4CAF50'; // Lysere grønt for 1X2
+                              bgCol = '#4CAF50';
                               txtDesc = 'Rigtig 1X2! (1 pt)';
                             }
                           } else {
@@ -665,11 +669,11 @@ export default function ClientScreens() {
                       </View>
                     ) : (
                       <View style={styles.matchTeamsRow}>
-                        <ImageBackground source={{ uri: getTeamLogo(m.homeTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: hStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{m.homeTeam}</Text></ImageBackground>
+                        <ImageBackground source={{ uri: getTeamLogo(m.homeTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: hStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{getTeamDisplayName(m.homeTeam)}</Text></ImageBackground>
                         <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.home || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], home: val}})} />
                         <Text style={{fontWeight: 'bold', marginHorizontal: 4, color: locked ? '#888' : '#111'}}>-</Text>
                         <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.away || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], away: val}})} />
-                        <ImageBackground source={{ uri: getTeamLogo(m.awayTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: aStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{m.awayTeam}</Text></ImageBackground>
+                        <ImageBackground source={{ uri: getTeamLogo(m.awayTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: aStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{getTeamDisplayName(m.awayTeam)}</Text></ImageBackground>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -719,7 +723,7 @@ export default function ClientScreens() {
             <View style={styles.modalOverlay}>
               <View style={styles.modalContainer}>
                 <Text style={styles.modalHeader}>Brugernes Gæt</Text>
-                <Text style={{marginBottom: 10, fontStyle: 'italic', color: '#666', textAlign: 'center'}}>{selectedMatchForGuesses?.homeTeam} vs {selectedMatchForGuesses?.awayTeam}</Text>
+                <Text style={{marginBottom: 10, fontStyle: 'italic', color: '#666', textAlign: 'center'}}>{getTeamDisplayName(selectedMatchForGuesses?.homeTeam)} vs {getTeamDisplayName(selectedMatchForGuesses?.awayTeam)}</Text>
                 {isLoadingGuesses ? <Text>Henter gæt...</Text> : (
                   <ScrollView style={{maxHeight: 300, width: '100%'}}>
                     {matchGuessesList.length > 0 ? matchGuessesList.map((g, index) => {
@@ -1025,7 +1029,7 @@ export default function ClientScreens() {
               <TouchableOpacity onPress={() => setSelectedAwayInfo(null)} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE TIL LISTEN</Text></TouchableOpacity>
               <View style={styles.detailCard}>
                  <Text style={{fontSize: 12, fontWeight: 'bold', color: '#C5A059', textAlign: 'center', marginBottom: 5}}>{formatDanishDate(m?.matchDate)}</Text>
-                 <Text style={{fontSize: 22, fontWeight: '900', color: '#12352A', textAlign: 'center', marginBottom: 15}}>{m ? `${m.homeTeam} vs AB` : (selectedAwayInfo.opponent ? `${selectedAwayInfo.opponent} vs AB` : 'Udebane')}</Text>
+                 <Text style={{fontSize: 22, fontWeight: '900', color: '#12352A', textAlign: 'center', marginBottom: 15}}>{m ? `${getTeamDisplayName(m.homeTeam)} vs AB` : (selectedAwayInfo.opponent ? `${getTeamDisplayName(selectedAwayInfo.opponent)} vs AB` : 'Udebane')}</Text>
                  <Text style={{fontSize: 16, color: '#333', lineHeight: 26}}>{selectedAwayInfo.infoText}</Text>
               </View>
             </ScrollView>
@@ -1056,7 +1060,7 @@ export default function ClientScreens() {
               }}>
                 <View style={{flex: 1}}>
                   <Text style={{fontSize: 10, fontWeight: 'bold', color: '#C5A059', marginBottom: 2}}>{formatDanishDate(info.matchDetails.matchDate)}</Text>
-                  <Text style={{fontSize: 16, fontWeight: '900', color: '#12352A'}}>{info.matchDetails.homeTeam} vs AB</Text>
+                  <Text style={{fontSize: 16, fontWeight: '900', color: '#12352A'}}>{getTeamDisplayName(info.matchDetails.homeTeam)} vs AB</Text>
                 </View>
                 <Text style={{color: '#C5A059', fontWeight: 'bold', fontSize: 18}}>➔</Text>
               </TouchableOpacity>
