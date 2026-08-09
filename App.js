@@ -181,8 +181,8 @@ export default function App() {
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
         <TouchableOpacity style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', padding: 20 }} activeOpacity={1} onPress={() => setShowSplash(false)}>
           
-          {/* Rammen med objectFit 'contain' for at sikre at videoen aldrig bliver zoomet ind eller skåret af på nettet */}
-          <View style={{ width: '85%', maxWidth: 380, maxHeight: '60%', aspectRatio: 9/16, justifyContent: 'center', alignItems: 'center', borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: '#C5A059', backgroundColor: '#000', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.6, shadowRadius: 15, elevation: 12 }}>
+          {/* SKUDSIKKER RAMME: Fast højde og bredde uden forvrængning eller klipning */}
+          <View style={{ width: '90%', maxWidth: 360, height: 340, justifyContent: 'center', alignItems: 'center', borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: '#C5A059', backgroundColor: '#000', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.6, shadowRadius: 15, elevation: 12 }}>
             <Video 
               source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
               style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
