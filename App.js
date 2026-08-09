@@ -184,10 +184,10 @@ export default function App() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
         <TouchableOpacity style={[styles.splashContainer, { justifyContent: 'center', alignItems: 'center' }]} activeOpacity={1} onPress={() => setShowSplash(false)}>
-          <View style={[styles.splashVideoWrapper, { width: '90%', maxWidth: 350, height: 450, justifyContent: 'center', alignItems: 'center', alignSelf: 'center' }]}>
+          <View style={[styles.splashVideoWrapper, { width: '90%', maxWidth: 320, height: 420, justifyContent: 'center', alignItems: 'center', alignSelf: 'center' }]}>
             <Video 
               source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
-              style={{ width: '100%', height: '100%' }} 
+              style={{ width: '100%', height: '100%', objectFit: 'contain' }} 
               resizeMode={ResizeMode.CONTAIN} 
               shouldPlay={true} 
               isMuted={isVideoMuted}
