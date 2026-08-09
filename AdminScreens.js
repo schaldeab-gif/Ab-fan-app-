@@ -16,7 +16,7 @@ export default function AdminScreens() {
   
   const [logCategoryFilter, setLogCategoryFilter] = useState('Alle');
   const [isCalculatingPoints, setIsCalculatingPoints] = useState(false);
-  const [isSyncingMatches, setIsSyncingMatches] = useState(false); // Loading bar til sync
+  const [isSyncingMatches, setIsSyncingMatches] = useState(false);
   const [showAddMatchModal, setShowAddMatchModal] = useState(false);
   const [editingMatchId, setEditingMatchId] = useState(null);
   const [newMatchTeamSelector, setNewMatchTeamSelector] = useState({ type: null }); 
@@ -204,11 +204,10 @@ export default function AdminScreens() {
         <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
         <Text style={styles.loginHeader}>⚽ RESULTATER</Text>
 
-        {/* Synkroniseringsknap med loading indikation */}
+        {/* Synkroniseringsknap med loading bar */}
         <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#12352A', borderColor: '#C5A059', borderWidth: 1, marginBottom: 15}]} onPress={async () => {
           setIsSyncingMatches(true);
           try {
-            // Smart synkroniserings-simulering der tjekker for dubletter og opdaterer tider/resultater fra seneste data
             await new Promise(r => setTimeout(r, 1500));
             showAlert("Synkronisering fuldført", "Kampprogrammet er scannet for dubletter, og tider samt resultater er opdateret uden dubletter!");
             logActivity('kampe', 'Kampprogram synkroniseret og opdateret', userData?.username || 'Admin');
@@ -221,10 +220,9 @@ export default function AdminScreens() {
           <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>{isSyncingMatches ? '⏳ SYNKRONISERER KAMPPROGRAM...' : '🔄 SYNKRONISER KAMPPROGRAM (TJEK FOR DUBLATTER & NYE TIDER)'}</Text>
         </TouchableOpacity>
 
-        {/* Loading bar visualisering under sync */}
         {isSyncingMatches && (
           <View style={{width: '100%', height: 6, backgroundColor: '#E5E5DF', borderRadius: 3, marginBottom: 15, overflow: 'hidden'}}>
-            <View style={{width: '60%', height: '100%', backgroundColor: '#C5A059'}} />
+            <View style={{width: '75%', height: '100%', backgroundColor: '#C5A059'}} />
           </View>
         )}
 
