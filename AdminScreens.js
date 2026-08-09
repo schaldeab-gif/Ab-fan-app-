@@ -15,8 +15,6 @@ export default function AdminScreens() {
   const TEAM_DB = { ...INITIAL_TEAM_DB, ...customTeams };
   
   const [logCategoryFilter, setLogCategoryFilter] = useState('Alle');
-  const [pendingSyncChanges, setPendingSyncChanges] = useState([]);
-  const [showSyncPreviewModal, setShowSyncPreviewModal] = useState(false);
   const [isCalculatingPoints, setIsCalculatingPoints] = useState(false);
   const [showAddMatchModal, setShowAddMatchModal] = useState(false);
   const [editingMatchId, setEditingMatchId] = useState(null);
@@ -325,8 +323,21 @@ export default function AdminScreens() {
             <TouchableOpacity onPress={() => { setEditingUser(u); setEditUsername(u.username); setEditPoints(String(u.points || 0)); setEditRole(u.role || 'Alm. Bruger'); setEditFractions(u.fractions || []); }} style={{marginRight: 10}}><Text style={{color: '#12352A', fontWeight: 'bold'}}>✏️</Text></TouchableOpacity>
             {(userData?.role === 'Super Admin' || userData?.email === 'schaldeab@gmail.com') && (
               <>
-                <TouchableOpacity onPress={async () => { if (u.email === 'schaldeab@gmail.com') return alert("Kan ikke banne Super Admin!"); if (u.banned) { await db.collection('users').doc(u.id).update({ banned: false, bannedUntil: null }); } else { Alert.alert("Ban", "Vælg varighed:", [{ text: "1 Dag", onPress: () => db.collection('users').doc(u.id).update({banned:true, bannedUntil: new Date().getTime()+(1*24*60*60*1000)}) }, { text: "Permanent", onPress: () => db.collection('users').doc(u.id).update({banned:true, bannedUntil: null}) }, { text: "Annuller" }]); } }} style={{marginRight: 10, padding: 4, backgroundColor: u.banned ? '#4CAF50' : '#FF9800', borderRadius: 4}}><Text style={{color: '#fff', fontSize: 10, fontWeight: 'bold'}}>{u.banned ? 'UNBAN' : 'BAN'}</Text></TouchableOpacity>
-                <TouchableOpacity onPress={() => { if (u.email === 'schaldeab@gmail.com') return alert("Super Admin kan ikke slettes!"); Alert.alert("Slet", "Slet?", [{text:"Annuller"}, {text:"Slet", style:"destructive", onPress: async () => await db.collection('users').doc(u.id).delete()}]); }} style={styles.deleteBtn}><Text style={{color: '#FFFFFF', fontSize: 10, fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>
+                <TouchableOpacity onPress={async () => {
+                   if (u.email === 'schaldeab@gmail.com') return alert("Kan ikke banne Super Admin!"); 
+                   if (u.banned) { 
+                     await db.collection('users').doc(u.id).update({ banned: false, bannedUntil: null }); 
+                   } else { 
+                     Alert.alert("Ban varighed", "Vælg hvor længe brugeren skal bannet:", [
+                       { text: "1 Dag", onPress: () => db.collection('users').doc(u.id).update({banned:true, bannedUntil: new Date().getTime()+(1*24*60*60*1000)}) },
+                       { text: "3 Dage", onPress: () => db.collection('users').doc(u.id).update({banned:true, bannedUntil: new Date().getTime()+(3*24*60*60*1000)}) },
+                       { text: "1 Uge", onPress: () => db.collection('users').doc(u.id).update({banned:true, bannedUntil: new Date().getTime()+(7*24*60*60*1000)}) },
+                       { text: "Permanent", onPress: () => db.collection('users').doc(u.id).update({banned:true, bannedUntil: null}) },
+                       { text: "Annuller", style: "cancel" }
+                     ]); 
+                   } 
+                }} style={{marginRight: 10, padding: 4, backgroundColor: u.banned ? '#4CAF50' : '#FF9800', borderRadius: 4}}><Text style={{color: '#fff', fontSize: 10, fontWeight: 'bold'}}>{u.banned ? 'UNBAN' : 'BAN'}</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => { if (u.email === 'schaldeab@gmail.com') return alert("Super Admin kan ikke slettes!"); Alert.alert("Slet", "Vil du slette?", [{text:"Annuller"}, {text:"Slet", style:"destructive", onPress: async () => await db.collection('users').doc(u.id).delete()}]); }} style={styles.deleteBtn}><Text style={{color: '#FFFFFF', fontSize: 10, fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>
               </>
             )}
           </View>
@@ -374,7 +385,7 @@ export default function AdminScreens() {
           <View key={song.id} style={{backgroundColor: '#F5F5EF', padding: 12, borderRadius: 8, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderWidth: 1, borderColor: '#E5E5DF'}}>
             <Text style={{fontWeight: 'bold', color: '#12352A', flex: 1}}>{song.title}</Text>
             <TouchableOpacity onPress={() => setEditingSong(song)} style={{marginRight: 15}}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>✏️</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => Alert.alert("Slet", "Vil du slette?", [{ text: "Annuller" }, { text: "Slet", style: "destructive", onPress: async () => await db.collection('songs').doc(song.id).delete() }])}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => Alert.alert("Slet", "Vil du slette?", [{ text: "Annuller" }, { text: "Slet", style: "destructive", onPress: async () => await db.collection('songs').doc(song.id).delete() }])}><Text style={{color: '#8A1C1C', fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>
           </View>
         ))}
         <View style={{height: 40}} />
