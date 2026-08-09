@@ -71,6 +71,18 @@ export default function ClientScreens() {
   const pendingSongsCount = ctx.pendingSongs?.length || 0;
   const adminNotificationsCount = pendingSongsCount + pendingResultsCount;
 
+  // Formater dato til kort måned (3 bogstaver) + klokkeslet for kommende kampe
+  const formatShortDateWithTime = (dateInput) => {
+    if (!dateInput) return ''; let d;
+    if (dateInput.toDate) d = dateInput.toDate();
+    else if (typeof dateInput === 'string') { const isMatchFormat = dateInput.includes(' ') && !dateInput.includes('T'); d = new Date(isMatchFormat ? dateInput.replace(' ', 'T') : dateInput); }
+    else d = new Date(dateInput);
+    if (isNaN(d.getTime())) return dateInput;
+    const days = ['Søn.', 'Man.', 'Tir.', 'Ons.', 'Tor.', 'Fre.', 'Lør.']; 
+    const months = ['jan.', 'feb.', 'mar.', 'apr.', 'maj', 'jun.', 'jul.', 'aug.', 'sep.', 'okt.', 'nov.', 'dec.'];
+    return `${days[d.getDay()]} ${d.getDate()}. ${months[d.getMonth()]} kl. ${String(d.getHours()).padStart(2, '0')}.${String(d.getMinutes()).padStart(2, '0')}`;
+  };
+
   // Lås tipspil til den globale runde, der indeholder den næste uafsluttede kamp
   useEffect(() => {
     if (currentScreen === 'tipspil' && matchesList.length > 0) {
@@ -269,7 +281,7 @@ export default function ClientScreens() {
                       <Image source={{ uri: getTeamLogo(m.awayTeam) }} style={{ width: 25, height: 25, marginRight: 5 }} resizeMode="contain" /><Text style={{ fontSize: 12, fontWeight: 'bold', color: '#12352A' }}>{m.awayTeam}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 10, color: '#666' }}>{formatDanishDate(m.matchDate).split(' kl.')[0]}</Text>
+                      <Text style={{ fontSize: 10, color: '#666' }}>{formatShortDateWithTime(m.matchDate)}</Text>
                       {canViewAwayInfo && awayInfo && <TouchableOpacity onPress={() => { setSelectedAwayInfo(awayInfo); setCurrentScreen('awayInfo'); }} style={{ backgroundColor: '#12352A', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3, marginTop: 2 }}><Text style={{ color: '#C5A059', fontSize: 8, fontWeight: 'bold' }}>🚌 AWAY INFO</Text></TouchableOpacity>}
                     </View>
                   </View>
