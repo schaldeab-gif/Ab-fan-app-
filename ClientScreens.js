@@ -41,6 +41,12 @@ export default function ClientScreens() {
   const [hideFractions, setHideFractions] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
+  // Notifikationsindstillinger state til edit profile
+  const [notifNews, setNotifNews] = useState(userData?.notifPreferences?.news ?? true);
+  const [notifAway, setNotifAway] = useState(userData?.notifPreferences?.away ?? true);
+  const [notifTipspil, setNotifTipspil] = useState(userData?.notifPreferences?.tipspil ?? true);
+  const [notifForum, setNotifForum] = useState(userData?.notifPreferences?.forum ?? true);
+
   const [selectedRound, setSelectedRound] = useState('Runde 1');
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showGuessesModal, setShowGuessesModal] = useState(false);
@@ -68,25 +74,87 @@ export default function ClientScreens() {
   const pendingSongsCount = ctx.pendingSongs?.length || 0;
   const adminNotificationsCount = pendingSongsCount + pendingResultsCount;
 
-  // Live avatar hjælperfunktion så forum altid viser nyeste profilbillede
+  // Live avatar hjælperfunktion
   const getLiveAuthorPhoto = (authorId, defaultPhoto) => {
     const foundUser = usersList.find(u => u.id === authorId);
     return foundUser?.photoURL || defaultPhoto || 'https://via.placeholder.com/150';
   };
 
-  // Notifikationer beregning til notifikationsbaren
+  // Generer interaktive notifikationer baseret på læst-status og brugerens præferencer
   const getNotifications = () => {
+    if (!user) return [];
+    const prefs = userData?.notifPreferences || { news: true, away: true, tipspil: true, forum: true };
     let notifs = [];
-    if (!user) return notifs;
-    // Tjek om der er nye away info ture
-    if (awayInfoList.length > 0 && canViewAwayInfo) {
-      notifs.push({ id: 'away', text: `🚌 Ny away info tilgængelig (${awayInfoList.length} tur(e))`, screen: 'awayInfo' });
+
+    // 1. Nye nyheder
+    if (prefs.news && newsList.length > 0) {
+      const lastSeen = userData?.lastSeenNews?.toMillis ? userData.lastSeenNews.toMillis() : (userData?.lastSeenNews || 0);
+      const unreadNews = newsList.filter(n => n.createdAt?.toMillis ? n.createdAt.toMillis() > lastSeen : false);
+      if (unreadNews.length > 0) {
+        notifs.push({
+          id: 'news_' + unreadNews[0].id,
+          text: `📰 Nyhed: "${unreadNews[0].title}"`,
+          onPress: async () => {
+            await db.collection('users').doc(user.uid).update({ lastSeenNews: firebase.firestore.FieldValue.serverTimestamp() });
+            setSelectedNews(unreadNews[0]);
+            setCurrentScreen('newsDetail');
+          }
+        });
+      }
     }
-    // Tjek egne tråde for nye svar
-    const myThreads = allThreads.filter(t => t.authorId === user.uid);
-    if (myThreads.length > 0) {
-      notifs.push({ id: 'forum', text: `💬 Du har oprettet ${myThreads.length} debat(ter) i forummet.`, screen: 'forum' });
+
+    // 2. Nye Away Info ture
+    if (prefs.away && canViewAwayInfo && awayInfoList.length > 0) {
+      const lastSeen = userData?.lastSeenAway?.toMillis ? userData.lastSeenAway.toMillis() : (userData?.lastSeenAway || 0);
+      const newAway = awayInfoList.filter(a => a.createdAt?.toMillis ? a.createdAt.toMillis() > lastSeen : false);
+      if (newAway.length > 0) {
+        notifs.push({
+          id: 'away_' + newAway[0].id,
+          text: `🚌 Ny away info tilgængelig (${newAway.length} tur(e))`,
+          onPress: async () => {
+            await db.collection('users').doc(user.uid).update({ lastSeenAway: firebase.firestore.FieldValue.serverTimestamp() });
+            setSelectedAwayInfo(newAway[0]);
+            setCurrentScreen('awayInfo');
+          }
+        });
+      }
     }
+
+    // 3. Tipspil point opdatering
+    if (prefs.tipspil && userData?.points > 0) {
+      const lastSeen = userData?.lastSeenTipspil?.toMillis ? userData.lastSeenTipspil.toMillis() : (userData?.lastSeenTipspil || 0);
+      const lastMatch = [...matchesList].reverse().find(m => m.finalScore);
+      if (lastMatch && lastMatch.createdAt?.toMillis && lastMatch.createdAt.toMillis() > lastSeen) {
+        notifs.push({
+          id: 'tipspil_pts',
+          text: `⚽ Tipspil opdateret med nye point!`,
+          onPress: async () => {
+            await db.collection('users').doc(user.uid).update({ lastSeenTipspil: firebase.firestore.FieldValue.serverTimestamp() });
+            setCurrentScreen('tipspil');
+          }
+        });
+      }
+    }
+
+    // 4. Forum svar i egne tråde
+    if (prefs.forum) {
+      const lastSeen = userData?.lastSeenForum?.toMillis ? userData.lastSeenForum.toMillis() : (userData?.lastSeenForum || 0);
+      const myThreadIds = allThreads.filter(t => t.authorId === user.uid).map(t => t.id);
+      const unreadThreads = allThreads.filter(t => myThreadIds.includes(t.id) && (t.createdAt?.toMillis ? t.createdAt.toMillis() > lastSeen : false));
+      if (unreadThreads.length > 0) {
+        notifs.push({
+          id: 'forum_reply',
+          text: `💬 Nyt svar eller aktivitet i dine forum-tråde`,
+          onPress: async () => {
+            await db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() });
+            setSelectedCategory(forumCategories.find(c => c.id === unreadThreads[0].categoryId) || forumCategories[0]);
+            setSelectedThread(unreadThreads[0]);
+            setCurrentScreen('forum');
+          }
+        });
+      }
+    }
+
     return notifs;
   };
   const activeNotifications = getNotifications();
@@ -223,11 +291,18 @@ export default function ClientScreens() {
         </TouchableOpacity>
 
         {/* Notifikationsbar */}
-        {activeNotifications.length > 0 && (
-          <View style={{backgroundColor: '#C5A059', paddingVertical: 6, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderBottomWidth: 1, borderBottomColor: '#a68243'}}>
-            <Text style={{fontSize: 11, fontWeight: 'bold', color: '#111', textAlign: 'center'}}>🔔 {activeNotifications[0].text}</Text>
-          </View>
-        )}
+        <View style={{backgroundColor: '#12352A', paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#C5A059'}}>
+          <Text style={{fontSize: 10, fontWeight: '900', color: '#C5A059', marginBottom: 3, textTransform: 'uppercase'}}>🔔 Notifikationer</Text>
+          {activeNotifications.length === 0 ? (
+            <Text style={{fontSize: 11, color: '#fff', fontStyle: 'italic'}}>Ingen nye notifikationer</Text>
+          ) : (
+            activeNotifications.map(n => (
+              <TouchableOpacity key={n.id} onPress={n.onPress} style={{paddingVertical: 3}}>
+                <Text style={{fontSize: 12, color: '#C5A059', fontWeight: 'bold'}}>• {n.text} ➔</Text>
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
 
         <View style={styles.menuBar}>
           <TouchableOpacity onPress={() => setMenuOpen(!menuOpen)} style={styles.menuBarButton}><Text style={styles.menuBarText}>{menuOpen ? '✖ LUK MENU' : '☰ MENU'} {!menuOpen && adminNotificationsCount > 0 && isAdmin && <Text style={{color: '#E30613'}}> 🔴</Text>}</Text></TouchableOpacity>
@@ -380,6 +455,13 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'tipspil') {
+    // Opdater lastSeenTipspil når man går ind i tipspil
+    useEffect(() => {
+      if (user) {
+        db.collection('users').doc(user.uid).update({ lastSeenTipspil: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+      }
+    }, []);
+
     const uniqueRounds = [...new Set(matchesList.map(m => m.round))];
     if (uniqueRounds.length > 0 && !uniqueRounds.includes(selectedRound)) setSelectedRound(uniqueRounds[0]);
 
@@ -542,6 +624,13 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'forum') {
+    // Opdater lastSeenForum når man går ind i forum
+    useEffect(() => {
+      if (user) {
+        db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+      }
+    }, []);
+
     if (selectedThread) {
       const threadLivePhoto = getLiveAuthorPhoto(selectedThread.authorId, selectedThread.authorPhoto);
       return (
@@ -763,6 +852,13 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'awayInfo') {
+    // Opdater lastSeenAway når man går ind i awayInfo
+    useEffect(() => {
+      if (user) {
+        db.collection('users').doc(user.uid).update({ lastSeenAway: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+      }
+    }, []);
+
     if (!canViewAwayInfo) {
       return (
         <View style={{flex: 1}}>
@@ -826,6 +922,13 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'newsDetail') {
+    // Opdater lastSeenNews når man kigger på enhedens nyhed
+    useEffect(() => {
+      if (user) {
+        db.collection('users').doc(user.uid).update({ lastSeenNews: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+      }
+    }, []);
+
     return (
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
         <ScrollView contentContainerStyle={styles.detailContainer}>
@@ -882,7 +985,7 @@ export default function ClientScreens() {
           <TextInput style={styles.inputField} placeholder="Adgangskode" placeholderTextColor="#888" secureTextEntry value={password} onChangeText={setPassword} />
           <TouchableOpacity style={styles.checkboxRow} onPress={() => setRememberMe(!rememberMe)}><View style={[styles.checkboxBox, rememberMe && styles.checkboxChecked]}>{rememberMe && <Text style={{color: '#fff', fontSize: 12, fontWeight: 'bold'}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Husk mig på enheden</Text></TouchableOpacity>
           <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!email || !password) return showAlert("Fejl", "Udfyld e-mail og adgangskode."); try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); await auth.signInWithEmailAndPassword(email, password); setCurrentScreen('home'); setEmail(''); setPassword(''); } catch (error) { showAlert("Login fejl", error.message); } }}><Text style={styles.primaryButtonText}>LOG IND</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.googleButton} onPress={async () => { try { const provider = new firebase.auth.GoogleAuthProvider(); await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); const result = await auth.signInWithPopup(provider); const u = result.user; const userDoc = await db.collection('users').doc(u.uid).get(); if (!userDoc.exists) { const newUserData = { uid: u.uid, username: u.displayName || 'Google Fan', email: u.email, photoURL: u.photoURL || 'https://via.placeholder.com/150', points: 0, role: u.email === 'schaldeab@gmail.com' ? 'Super Admin' : 'Alm. Bruger', fractions: [], bio: '', signature: '', hideFractions: false, banned: false, bannedUntil: null, blockedUsers: [], stats: { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }, roundPoints: {}, createdAt: firebase.firestore.FieldValue.serverTimestamp() }; await db.collection('users').doc(u.uid).set(newUserData); setUserData(newUserData); } setCurrentScreen('home'); } catch (error) { showAlert("Google login fejl", error.message); } }}><Text style={styles.googleButtonText}>🔵 LOG IND MED GOOGLE</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.googleButton} onPress={async () => { try { const provider = new firebase.auth.GoogleAuthProvider(); await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); const result = await auth.signInWithPopup(provider); const u = result.user; const userDoc = await db.collection('users').doc(u.uid).get(); if (!userDoc.exists) { const newUserData = { uid: u.uid, username: u.displayName || 'Google Fan', email: u.email, photoURL: u.photoURL || 'https://via.placeholder.com/150', points: 0, role: u.email === 'schaldeab@gmail.com' ? 'Super Admin' : 'Alm. Bruger', fractions: [], bio: '', signature: '', hideFractions: false, banned: false, bannedUntil: null, blockedUsers: [], stats: { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }, roundPoints: {}, notifPreferences: { news: true, away: true, tipspil: true, forum: true }, createdAt: firebase.firestore.FieldValue.serverTimestamp() }; await db.collection('users').doc(u.uid).set(newUserData); setUserData(newUserData); } setCurrentScreen('home'); } catch (error) { showAlert("Google login fejl", error.message); } }}><Text style={styles.googleButtonText}>🔵 LOG IND MED GOOGLE</Text></TouchableOpacity>
           <TouchableOpacity style={[styles.secondaryButton, {marginTop: 20}]} onPress={() => setCurrentScreen('signup')}><Text style={styles.secondaryButtonText}>Har du ikke en konto? Opret her</Text></TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -901,7 +1004,7 @@ export default function ClientScreens() {
           <TextInput style={styles.inputField} placeholder="E-mail" placeholderTextColor="#888" autoCapitalize="none" value={email} onChangeText={setEmail} />
           <TextInput style={styles.inputField} placeholder="Adgangskode" placeholderTextColor="#888" secureTextEntry value={password} onChangeText={setPassword} />
           <TextInput style={styles.inputField} placeholder="Bekræft adgangskode" placeholderTextColor="#888" secureTextEntry value={confirmPassword} onChangeText={setConfirmPassword} />
-          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!username || !email || !password || !confirmPassword) return showAlert("Fejl", "Udfyld alle felter."); if (password !== confirmPassword) return showAlert("Fejl", "Adgangskoderne er ikke ens."); setIsUploading(true); try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); const userCredential = await auth.createUserWithEmailAndPassword(email, password); let finalPhotoUrl = avatarUrl.trim() !== '' ? avatarUrl.trim() : `https://via.placeholder.com/150/12352A/FFFFFF?text=${username.charAt(0).toUpperCase()}`; await userCredential.user.updateProfile({ displayName: username, photoURL: finalPhotoUrl }); let assignedRole = email === 'schaldeab@gmail.com' ? 'Super Admin' : 'Alm. Bruger'; const newUserData = { uid: userCredential.user.uid, username, email, photoURL: finalPhotoUrl, points: 0, role: assignedRole, fractions: [], bio: '', signature: '', hideFractions: false, banned: false, bannedUntil: null, blockedUsers: [], stats: { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }, roundPoints: {}, createdAt: firebase.firestore.FieldValue.serverTimestamp() }; await db.collection('users').doc(userCredential.user.uid).set(newUserData); setUserData(newUserData); setCurrentScreen('home'); setUsername(''); setEmail(''); setPassword(''); setConfirmPassword(''); setAvatarUrl(''); } catch (error) { showAlert("Fejl", error.message); } finally { setIsUploading(false); } }}><Text style={styles.primaryButtonText}>OPRET</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!username || !email || !password || !confirmPassword) return showAlert("Fejl", "Udfyld alle felter."); if (password !== confirmPassword) return showAlert("Fejl", "Adgangskoderne er ikke ens."); setIsUploading(true); try { await auth.setPersistence(firebase.auth.Auth.Persistence.LOCAL); const userCredential = await auth.createUserWithEmailAndPassword(email, password); let finalPhotoUrl = avatarUrl.trim() !== '' ? avatarUrl.trim() : `https://via.placeholder.com/150/12352A/FFFFFF?text=${username.charAt(0).toUpperCase()}`; await userCredential.user.updateProfile({ displayName: username, photoURL: finalPhotoUrl }); let assignedRole = email === 'schaldeab@gmail.com' ? 'Super Admin' : 'Alm. Bruger'; const newUserData = { uid: userCredential.user.uid, username, email, photoURL: finalPhotoUrl, points: 0, role: assignedRole, fractions: [], bio: '', signature: '', hideFractions: false, banned: false, bannedUntil: null, blockedUsers: [], stats: { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }, roundPoints: {}, notifPreferences: { news: true, away: true, tipspil: true, forum: true }, createdAt: firebase.firestore.FieldValue.serverTimestamp() }; await db.collection('users').doc(userCredential.user.uid).set(newUserData); setUserData(newUserData); setCurrentScreen('home'); setUsername(''); setEmail(''); setPassword(''); setConfirmPassword(''); setAvatarUrl(''); } catch (error) { showAlert("Fejl", error.message); } finally { setIsUploading(false); } }}><Text style={styles.primaryButtonText}>OPRET</Text></TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
     );
@@ -918,9 +1021,15 @@ export default function ClientScreens() {
           <TextInput style={styles.inputField} placeholder="Eller Billede URL" autoCapitalize="none" value={avatarUrl} onChangeText={setAvatarUrl} />
           <TextInput style={[styles.inputField, {height: 80, textAlignVertical: 'top'}]} placeholder="Om mig" multiline value={bio} onChangeText={setBio} />
           <TextInput style={styles.inputField} placeholder="Signatur (vises i bunden af indlæg)" value={signature} onChangeText={setSignature} />
-          <TouchableOpacity style={[styles.checkboxRow, {marginBottom: 20}]} onPress={() => setHideFractions(!hideFractions)}><View style={[styles.checkboxBox, hideFractions && styles.checkboxChecked]}>{hideFractions && <Text style={{color: '#fff', fontSize: 12}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Skjul mine fanfraktioner</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.checkboxRow, {marginBottom: 15}]} onPress={() => setHideFractions(!hideFractions)}><View style={[styles.checkboxBox, hideFractions && styles.checkboxChecked]}>{hideFractions && <Text style={{color: '#fff', fontSize: 12}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Skjul mine fanfraktioner</Text></TouchableOpacity>
+
+          <Text style={[styles.sectionTitle, {fontSize: 14, marginTop: 10}]}>Notifikationsindstillinger</Text>
+          <TouchableOpacity style={[styles.checkboxRow, {marginBottom: 8}]} onPress={() => setNotifNews(!notifNews)}><View style={[styles.checkboxBox, notifNews && styles.checkboxChecked]}>{notifNews && <Text style={{color: '#fff', fontSize: 12}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Nyheder</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.checkboxRow, {marginBottom: 8}]} onPress={() => setNotifAway(!notifAway)}><View style={[styles.checkboxBox, notifAway && styles.checkboxChecked]}>{notifAway && <Text style={{color: '#fff', fontSize: 12}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Away Info</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.checkboxRow, {marginBottom: 8}]} onPress={() => setNotifTipspil(!notifTipspil)}><View style={[styles.checkboxBox, notifTipspil && styles.checkboxChecked]}>{notifTipspil && <Text style={{color: '#fff', fontSize: 12}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Tipspil Point</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.checkboxRow, {marginBottom: 20}]} onPress={() => setNotifForum(!notifForum)}><View style={[styles.checkboxBox, notifForum && styles.checkboxChecked]}>{notifForum && <Text style={{color: '#fff', fontSize: 12}}>✓</Text>}</View><Text style={styles.checkboxLabel}>Forum Svar</Text></TouchableOpacity>
           
-          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!username) return showAlert("Fejl", "Brugernavn påkrævet."); setIsUploading(true); try { const currentUser = auth.currentUser; let finalPhotoUrl = avatarUrl.trim() !== '' ? avatarUrl.trim() : currentUser.photoURL; await currentUser.updateProfile({ displayName: username, photoURL: finalPhotoUrl }); await db.collection('users').doc(currentUser.uid).set({ uid: currentUser.uid, username, photoURL: finalPhotoUrl, bio, signature, hideFractions }, { merge: true }); setUserData({ ...userData, username, photoURL: finalPhotoUrl, bio, signature, hideFractions }); setCurrentScreen('home'); showAlert("Succes", "Profil opdateret!"); } catch (error) { showAlert("Fejl", error.message); } finally { setIsUploading(false); } }}><Text style={styles.primaryButtonText}>GEM ÆNDRINGER</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!username) return showAlert("Fejl", "Brugernavn påkrævet."); setIsUploading(true); try { const currentUser = auth.currentUser; let finalPhotoUrl = avatarUrl.trim() !== '' ? avatarUrl.trim() : currentUser.photoURL; await currentUser.updateProfile({ displayName: username, photoURL: finalPhotoUrl }); const newPrefs = { news: notifNews, away: notifAway, tipspil: notifTipspil, forum: notifForum }; await db.collection('users').doc(currentUser.uid).set({ uid: currentUser.uid, username, photoURL: finalPhotoUrl, bio, signature, hideFractions, notifPreferences: newPrefs }, { merge: true }); setUserData({ ...userData, username, photoURL: finalPhotoUrl, bio, signature, hideFractions, notifPreferences: newPrefs }); setCurrentScreen('home'); showAlert("Succes", "Profil opdateret!"); } catch (error) { showAlert("Fejl", error.message); } finally { setIsUploading(false); } }}><Text style={styles.primaryButtonText}>GEM ÆNDRINGER</Text></TouchableOpacity>
           <View style={{height: 40}} />
         </ScrollView>
       </KeyboardAvoidingView>
