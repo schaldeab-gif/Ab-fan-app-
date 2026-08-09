@@ -75,10 +75,7 @@ export default function App() {
     db.collection('news').orderBy('createdAt', 'desc').onSnapshot(snap => setNewsList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('matches').orderBy('matchDate', 'asc').onSnapshot(snap => setMatchesList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('users').orderBy('points', 'desc').onSnapshot(snap => setLeaderboard(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    
-    // RETTET: Lytter nu aktivt på alle brugere til admin-panelet
     db.collection('users').onSnapshot(snap => setUsersList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
-    
     db.collection('audit_logs').orderBy('createdAt', 'desc').limit(50).onSnapshot(snap => setAuditLogs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('songs').where('approved', '==', true).onSnapshot(snap => setSongsList(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     db.collection('songs').where('approved', '==', false).onSnapshot(snap => setPendingSongs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
@@ -180,13 +177,15 @@ export default function App() {
 
   if (showSplash) {
     return (
-      <SafeAreaView style={styles.container}>
+      <SafeAreaView style={[styles.container, { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#12352A' }]}>
         <StatusBar barStyle="light-content" backgroundColor="#000000" />
-        <TouchableOpacity style={styles.splashContainer} activeOpacity={1} onPress={() => setShowSplash(false)}>
-          <View style={styles.splashVideoWrapper}>
+        <TouchableOpacity style={{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center', padding: 20 }} activeOpacity={1} onPress={() => setShowSplash(false)}>
+          
+          {/* Dynamisk boks der tilpasser sig skærmen (lidt mindre end skærmen, centrert med stilfuld ramme) */}
+          <View style={{ width: '85%', maxWidth: 380, maxHeight: '65%', aspectRatio: 9/16, justifyContent: 'center', alignItems: 'center', borderRadius: 16, overflow: 'hidden', borderWidth: 2, borderColor: '#C5A059', backgroundColor: '#000', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.6, shadowRadius: 15, elevation: 12 }}>
             <Video 
               source={{ uri: 'https://res.cloudinary.com/p8m3uw3r/video/upload/gemini_generated_video_4c34e273_1_jeodgc.mp4' }} 
-              style={styles.splashVideo} 
+              style={{ width: '100%', height: '100%' }} 
               resizeMode="contain" 
               shouldPlay={true} 
               isMuted={isVideoMuted}
@@ -194,13 +193,14 @@ export default function App() {
               onPlaybackStatusUpdate={(status) => { if (status.didJustFinish) setShowSplash(false); }} 
             />
           </View>
+
           <TouchableOpacity 
             onPress={() => setIsVideoMuted(!isVideoMuted)} 
-            style={{marginTop: 15, paddingHorizontal: 15, paddingVertical: 8, backgroundColor: '#333', borderRadius: 20, borderWidth: 1, borderColor: '#C5A059'}}
+            style={{ marginTop: 20, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: '#0B221B', borderRadius: 20, borderWidth: 1, borderColor: '#C5A059' }}
           >
-            <Text style={{color: '#fff', fontWeight: 'bold'}}>{isVideoMuted ? '🔇 Tænd Lyd' : '🔊 Sluk Lyd'}</Text>
+            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{isVideoMuted ? '🔇 Tænd Lyd' : '🔊 Sluk Lyd'}</Text>
           </TouchableOpacity>
-          <Text style={{color: '#C5A059', marginTop: 30, fontWeight: 'bold', letterSpacing: 2}}>TRYK HER FOR AT STARTE APPEN</Text>
+          <Text style={{ color: '#C5A059', marginTop: 15, fontWeight: 'bold', letterSpacing: 2, textAlign: 'center', fontSize: 13 }}>TRYK HER FOR AT STARTE APPEN</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
