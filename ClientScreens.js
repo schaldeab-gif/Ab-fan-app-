@@ -1,5 +1,5 @@
-import React, { useState, useContext, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, KeyboardAvoidingView, Platform, Modal, ImageBackground, Linking } from 'react-native';
+import React, { useState, useContext, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, KeyboardAvoidingView, Platform, Modal, ImageBackground, Linking, Animated } from 'react-native';
 import { AppContext } from './AppContext';
 import firebase from 'firebase';
 import { db, auth, storage } from './FirebaseConfig';
@@ -51,6 +51,19 @@ export default function ClientScreens() {
   const [currentNotifIndex, setCurrentNotifIndex] = useState(0);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
+  // Animationer for pulserende LIVE tekst og smooth notifikations-fade
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const notifAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 0.3, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true })
+      ])
+    ).start();
+  }, [pulseAnim]);
+
   const [selectedRound, setSelectedRound] = useState('Runde 1');
   const [showRulesModal, setShowRulesModal] = useState(false);
   const [showGuessesModal, setShowGuessesModal] = useState(false);
@@ -77,6 +90,15 @@ export default function ClientScreens() {
   const pendingResultsCount = matchesList.filter(m => m.matchDate && new Date(m.matchDate.replace(' ', 'T')).getTime() < new Date().getTime() && m.finalScore === false).length;
   const pendingSongsCount = ctx.pendingSongs?.length || 0;
   const adminNotificationsCount = pendingSongsCount + pendingResultsCount;
+
+  // Live match tjek (110 minutter efter kampstart)
+  const isMatchLive = (matchDateStr) => {
+    if (!matchDateStr) return false;
+    const start = new Date(matchDateStr.replace(' ', 'T')).getTime();
+    const now = new Date().getTime();
+    const end = start + (110 * 60 * 1000);
+    return now >= start && now <= end;
+  };
 
   // Live avatar hjælperfunktion
   const getLiveAuthorPhoto = (authorId, defaultPhoto) => {
@@ -174,14 +196,17 @@ export default function ClientScreens() {
   };
   const activeNotifications = getNotifications();
 
-  // Automatisk rotation af notifikationer hvert 4. sekund
+  // Automatisk rotation af notifikationer hvert 10. sekund med smooth fade
   useEffect(() => {
     if (activeNotifications.length <= 1) return;
     const timer = setInterval(() => {
-      setCurrentNotifIndex(prev => (prev + 1) % activeNotifications.length);
-    }, 4000);
+      Animated.timing(notifAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start(() => {
+        setCurrentNotifIndex(prev => (prev + 1) % activeNotifications.length);
+        Animated.timing(notifAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+      });
+    }, 10000);
     return () => clearInterval(timer);
-  }, [activeNotifications.length]);
+  }, [activeNotifications.length, notifAnim]);
 
   const canAccessCategory = (cat) => {
     if (isAdmin || isEditor || isSuperAdmin) return true;
@@ -315,19 +340,21 @@ export default function ClientScreens() {
           <Image source={{ uri: 'https://i.imgur.com/fpRHIje.png' }} style={styles.headerImageBanner} resizeMode="cover" />
         </TouchableOpacity>
 
-        {/* Notifikationsbar med enkeltvis rullende notifikation og dropdown pil */}
+        {/* Notifikationsbar med samlet antal, enkeltvis rullende notifikation og dropdown pil */}
         <View style={{backgroundColor: '#12352A', paddingVertical: 8, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#C5A059'}}>
           <View style={{flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'}}>
             <View style={{flex: 1}}>
-              <Text style={{fontSize: 10, fontWeight: '900', color: '#C5A059', marginBottom: 2, textTransform: 'uppercase'}}>🔔 Notifikationer</Text>
+              <Text style={{fontSize: 10, fontWeight: '900', color: '#C5A059', marginBottom: 2, textTransform: 'uppercase'}}>🔔 Notifikationer ({activeNotifications.length})</Text>
               {activeNotifications.length === 0 ? (
                 <Text style={{fontSize: 11, color: '#fff', fontStyle: 'italic'}}>Ingen nye notifikationer</Text>
               ) : (
-                <TouchableOpacity onPress={activeNotifications[safeNotifIndex]?.onPress} style={{paddingVertical: 2}}>
-                  <Text style={{fontSize: 12, color: '#C5A059', fontWeight: 'bold'}} numberOfLines={1}>
-                    • {activeNotifications[safeNotifIndex]?.text} ➔
-                  </Text>
-                </TouchableOpacity>
+                <Animated.View style={{ opacity: notifAnim }}>
+                  <TouchableOpacity onPress={activeNotifications[safeNotifIndex]?.onPress} style={{paddingVertical: 2}}>
+                    <Text style={{fontSize: 12, color: '#C5A059', fontWeight: 'bold'}} numberOfLines={1}>
+                      • {activeNotifications[safeNotifIndex]?.text} ➔
+                    </Text>
+                  </TouchableOpacity>
+                </Animated.View>
               )}
             </View>
             {activeNotifications.length > 0 && (
@@ -391,6 +418,8 @@ export default function ClientScreens() {
 
   if (currentScreen === 'home') {
     const nextMatchAwayInfo = nextMatch && nextMatch.awayTeam === 'AB' ? awayInfoList.find(a => a.matchId === nextMatch.id || a.opponent === nextMatch.homeTeam) : null;
+    const isLiveNext = nextMatch && isMatchLive(nextMatch.matchDate);
+
     return (
       <View style={{flex: 1}}>
         <TopBarMenu />
@@ -412,7 +441,11 @@ export default function ClientScreens() {
                 <View style={styles.matchInfoColumn}>
                   <Text style={styles.matchTournamentBadge}>{nextMatch.tournament}</Text>
                   <Text style={styles.vsText}>VS</Text>
-                  <Text style={styles.matchDateBadge}>{formatDanishDate(nextMatch.matchDate)}</Text>
+                  {isLiveNext ? (
+                    <Animated.Text style={{ color: '#2E7D32', fontWeight: '900', fontSize: 18, opacity: pulseAnim, marginVertical: 4, textAlign: 'center' }}>LIVE</Animated.Text>
+                  ) : (
+                    <Text style={styles.matchDateBadge}>{formatDanishDate(nextMatch.matchDate)}</Text>
+                  )}
                   <Text style={styles.matchStadiumText}>📍 {nextMatch.alternativeStadium || getStadium(nextMatch.homeTeam)}</Text>
                   {canViewAwayInfo && nextMatchAwayInfo && <TouchableOpacity onPress={() => { setSelectedAwayInfo(nextMatchAwayInfo); setCurrentScreen('awayInfo'); }} style={{backgroundColor: '#12352A', padding: 6, borderRadius: 4, marginTop: 8}}><Text style={{color: '#C5A059', fontSize: 10, fontWeight: 'bold'}}>🚌 SE AWAY INFO</Text></TouchableOpacity>}
                 </View>
@@ -431,6 +464,7 @@ export default function ClientScreens() {
             <View style={{ padding: 10 }}>
               {upcomingMatchesToDisplay.length > 0 ? upcomingMatchesToDisplay.map(m => {
                 const awayInfo = m.awayTeam === 'AB' ? awayInfoList.find(a => a.matchId === m.id || a.opponent === m.homeTeam) : null;
+                const isItemLive = isMatchLive(m.matchDate);
                 return (
                   <View key={m.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#F0F0EA' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
@@ -439,7 +473,11 @@ export default function ClientScreens() {
                       <Image source={{ uri: getTeamLogo(m.awayTeam) }} style={{ width: 25, height: 25, marginRight: 5 }} resizeMode="contain" /><Text style={{ fontSize: 12, fontWeight: 'bold', color: '#12352A' }}>{m.awayTeam}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ fontSize: 10, color: '#666' }}>{formatShortDateWithTime(m.matchDate)}</Text>
+                      {isItemLive ? (
+                        <Animated.Text style={{ color: '#2E7D32', fontWeight: '900', fontSize: 11, opacity: pulseAnim }}>LIVE</Animated.Text>
+                      ) : (
+                        <Text style={{ fontSize: 10, color: '#666' }}>{formatShortDateWithTime(m.matchDate)}</Text>
+                      )}
                       {canViewAwayInfo && awayInfo && <TouchableOpacity onPress={() => { setSelectedAwayInfo(awayInfo); setCurrentScreen('awayInfo'); }} style={{ backgroundColor: '#12352A', paddingHorizontal: 5, paddingVertical: 2, borderRadius: 3, marginTop: 2 }}><Text style={{ color: '#C5A059', fontSize: 8, fontWeight: 'bold' }}>🚌 AWAY INFO</Text></TouchableOpacity>}
                     </View>
                   </View>
@@ -500,7 +538,6 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'tipspil') {
-    // Opdater lastSeenTipspil når man går ind i tipspil
     useEffect(() => {
       if (user) {
         db.collection('users').doc(user.uid).update({ lastSeenTipspil: Date.now() }).catch(()=>{});
@@ -562,12 +599,18 @@ export default function ClientScreens() {
               {currentRoundMatches.map((m) => {
                 const hStyle = getTeamStyle(m.homeTeam); const aStyle = getTeamStyle(m.awayTeam);
                 const isDoubleUp = activeDoubleUpId === m.id; const locked = isMatchLocked(m.matchDate) || m.finalScore;
+                const isMatchItemLive = isMatchLive(m.matchDate) && !m.finalScore;
+
                 return (
                   <TouchableOpacity activeOpacity={locked ? 0.7 : 1} onPress={() => locked && openGuessesModal(m)} key={m.id} style={[styles.matchCard, isDoubleUp && {borderColor: '#C5A059', borderWidth: 2}, locked && {opacity: 0.9, backgroundColor: '#F0F0EA'}]}>
                     <View style={{marginBottom: 4}}><Text style={{fontSize: 10, color: '#12352A', fontWeight: '900', textTransform: 'uppercase'}}>{m.tournament || 'Betinia Liga'}</Text></View>
                     <View style={{flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, alignItems: 'flex-start', flexWrap: 'wrap', gap: 6}}>
-                      <Text style={[styles.matchRoundText, locked && {color: '#888'}, {flex: 1, minWidth: '50%'}]}>📅 {formatDanishDate(m.matchDate)} {m.finalScore ? `\nRes:${m.homeScore}-${m.awayScore}` : ''} {locked && <Text style={{color: '#C5A059', fontStyle: 'italic'}}> 👁 Se andres gæt</Text>}</Text>
-                      {!isCupRound && (
+                      {isMatchItemLive ? (
+                        <Animated.Text style={{ color: '#2E7D32', fontWeight: '900', fontSize: 14, opacity: pulseAnim }}>🔴 LIVE</Animated.Text>
+                      ) : (
+                        <Text style={[styles.matchRoundText, locked && {color: '#888'}, {flex: 1, minWidth: '50%'}]}>📅 {formatDanishDate(m.matchDate)} {m.finalScore ? `\nRes:${m.homeScore}-${m.awayScore}` : ''} {locked && <Text style={{color: '#C5A059', fontStyle: 'italic'}}> 👁 Se andres gæt</Text>}</Text>
+                      )}
+                      {!isCupRound && !m.finalScore && (
                         <View style={{flexShrink: 0}}>
                           {!locked ? ((!isDoubleUpLockedByMatch || isDoubleUp) && (
                               <TouchableOpacity onPress={() => ctx.setUserPredictions({...ctx.userPredictions, [selectedRound]: { ...(ctx.userPredictions[selectedRound] || {}), jokerMatchId: m.id }})} style={{backgroundColor: isDoubleUp ? '#C5A059' : '#E5E5DF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4}}><Text style={{fontSize: 10, fontWeight: 'bold', color: isDoubleUp ? '#111' : '#555'}}>{isDoubleUp ? '⭐ DOBBELT OP VALGT' : '☆ VÆLG DOBBELT OP'}</Text></TouchableOpacity>
@@ -575,13 +618,52 @@ export default function ClientScreens() {
                         </View>
                       )}
                     </View>
-                    <View style={styles.matchTeamsRow}>
-                      <ImageBackground source={{ uri: getTeamLogo(m.homeTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: hStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{m.homeTeam}</Text></ImageBackground>
-                      <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.home || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], home: val}})} />
-                      <Text style={{fontWeight: 'bold', marginHorizontal: 4, color: locked ? '#888' : '#111'}}>-</Text>
-                      <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.away || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], away: val}})} />
-                      <ImageBackground source={{ uri: getTeamLogo(m.awayTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: aStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{m.awayTeam}</Text></ImageBackground>
-                    </View>
+
+                    {/* Hvis kampen er færdigspillet, vis stort resultat og farvekodet gæt */}
+                    {m.finalScore ? (
+                      <View style={{alignItems: 'center', marginVertical: 8, backgroundColor: '#F7F7F2', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#E5E5DF'}}>
+                        <Text style={{fontSize: 10, fontWeight: 'bold', color: '#666', textTransform: 'uppercase', marginBottom: 2}}>Endeligt Resultat</Text>
+                        <Text style={{fontSize: 22, fontWeight: '900', color: '#12352A', marginBottom: 6}}>{m.homeScore} - {m.awayScore}</Text>
+                        
+                        {(() => {
+                          const userPred = ctx.userPredictions[m.id] || { home: '', away: '' };
+                          const pH = userPred.home !== '' ? parseInt(userPred.home, 10) : null;
+                          const pA = userPred.away !== '' ? parseInt(userPred.away, 10) : null;
+
+                          let bgCol = '#E30613'; // Rød for forkert
+                          let txtDesc = 'Forkert (0 p)';
+                          if (pH !== null && pA !== null) {
+                            const isExact = pH === m.homeScore && pA === m.awayScore;
+                            const isSign = !isExact && ((pH > pA && m.homeScore > m.awayScore) || (pH < pA && m.homeScore < m.awayScore) || (pH === pA && m.homeScore === m.awayScore));
+                            if (isExact) {
+                              bgCol = '#12352A'; // Mørkegrønt for præcist
+                              txtDesc = 'Præcist gæt! (3 pts)';
+                            } else if (isSign) {
+                              bgCol = '#4CAF50'; // Lysere grønt for 1X2
+                              txtDesc = 'Rigtig 1X2! (1 pt)';
+                            }
+                          } else {
+                            txtDesc = 'Ingen gæt afgivet';
+                          }
+
+                          return (
+                            <View style={{backgroundColor: bgCol, width: '100%', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, alignItems: 'center'}}>
+                              <Text style={{color: '#fff', fontSize: 11, fontWeight: 'bold'}}>
+                                Dit gæt: {userPred.home !== '' ? userPred.home : '-'} - {userPred.away !== '' ? userPred.away : '-'} ({txtDesc})
+                              </Text>
+                            </View>
+                          );
+                        })()}
+                      </View>
+                    ) : (
+                      <View style={styles.matchTeamsRow}>
+                        <ImageBackground source={{ uri: getTeamLogo(m.homeTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: hStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{m.homeTeam}</Text></ImageBackground>
+                        <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.home || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], home: val}})} />
+                        <Text style={{fontWeight: 'bold', marginHorizontal: 4, color: locked ? '#888' : '#111'}}>-</Text>
+                        <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.away || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], away: val}})} />
+                        <ImageBackground source={{ uri: getTeamLogo(m.awayTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: aStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{m.awayTeam}</Text></ImageBackground>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -669,6 +751,12 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'forum') {
+    useEffect(() => {
+      if (user) {
+        db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+      }
+    }, []);
+
     if (selectedThread) {
       const threadLivePhoto = getLiveAuthorPhoto(selectedThread.authorId, selectedThread.authorPhoto);
       return (
@@ -898,6 +986,12 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'awayInfo') {
+    useEffect(() => {
+      if (user) {
+        db.collection('users').doc(user.uid).update({ lastSeenAway: Date.now() }).catch(()=>{});
+      }
+    }, []);
+
     if (!canViewAwayInfo) {
       return (
         <View style={{flex: 1}}>
