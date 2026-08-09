@@ -106,7 +106,7 @@ export default function ClientScreens() {
     return foundUser?.photoURL || defaultPhoto || 'https://via.placeholder.com/150';
   };
 
-  // Notifikationer logik med øjeblikkelig fjernelse ved tryk
+  // Notifikationer logik med øjeblikkelig optimstisk opdatering af state, så de forsvinder med det samme
   const getNotifications = () => {
     if (!user) return [];
     const prefs = userData?.notifPreferences || { news: true, away: true, tipspil: true, forum: true };
@@ -120,13 +120,13 @@ export default function ClientScreens() {
         notifs.push({
           id: 'news_' + target.id,
           text: `📰 Nyhed: "${target.title}"`,
-          onPress: async () => {
+          onPress: () => {
             setShowNotifDropdown(false);
             const updatedSeenNews = [...seenNews, target.id];
-            await db.collection('users').doc(user.uid).set({
+            setUserData(prev => ({ ...prev, seenNewsIds: updatedSeenNews }));
+            db.collection('users').doc(user.uid).set({
               seenNewsIds: firebase.firestore.FieldValue.arrayUnion(target.id)
             }, { merge: true }).catch(()=>{});
-            setUserData(prev => ({ ...prev, seenNewsIds: updatedSeenNews }));
             setSelectedNews(target);
             setCurrentScreen('newsDetail');
           }
@@ -141,14 +141,14 @@ export default function ClientScreens() {
         const target = unreadAway[0];
         notifs.push({
           id: 'away_' + target.id,
-          text: `🚌 Ny away info: (${target.opponent || 'Udebane'})`,
-          onPress: async () => {
+          text: `🚌 Ny away info: (${target.opponent || target.matchDetails?.homeTeam || 'Udebane'})`,
+          onPress: () => {
             setShowNotifDropdown(false);
             const updatedSeenAway = [...seenAway, target.id];
-            await db.collection('users').doc(user.uid).set({
+            setUserData(prev => ({ ...prev, seenAwayIds: updatedSeenAway }));
+            db.collection('users').doc(user.uid).set({
               seenAwayIds: firebase.firestore.FieldValue.arrayUnion(target.id)
             }, { merge: true }).catch(()=>{});
-            setUserData(prev => ({ ...prev, seenAwayIds: updatedSeenAway }));
             setSelectedAwayInfo(target);
             setCurrentScreen('awayInfo');
           }
@@ -159,17 +159,17 @@ export default function ClientScreens() {
     if (prefs.tipspil) {
       const lastSeenTipspil = userData?.lastSeenTipspil || 0;
       const finishedMatches = matchesList.filter(m => m.finalScore && (m.createdAt?.toMillis ? m.createdAt.toMillis() > lastSeenTipspil : true));
-      if (finishedMatches.length > 0 && (userData?.points || 0) > 0 && lastSeenTipspil === 0) {
+      if (finishedMatches.length > 0 && (userData?.points || 0) > 0) {
         notifs.push({
           id: 'tipspil_pts',
           text: `⚽ Tipspil opdateret med nye point!`,
-          onPress: async () => {
+          onPress: () => {
             setShowNotifDropdown(false);
-            const now = Date.now();
-            await db.collection('users').doc(user.uid).set({
-              lastSeenTipspil: now
+            const nowTime = Date.now();
+            setUserData(prev => ({ ...prev, lastSeenTipspil: nowTime }));
+            db.collection('users').doc(user.uid).set({
+              lastSeenTipspil: nowTime
             }, { merge: true }).catch(()=>{});
-            setUserData(prev => ({ ...prev, lastSeenTipspil: now }));
             setCurrentScreen('tipspil');
           }
         });
@@ -185,13 +185,13 @@ export default function ClientScreens() {
         notifs.push({
           id: 'forum_' + target.id,
           text: `💬 Nyt svar i din debat: "${target.title}"`,
-          onPress: async () => {
+          onPress: () => {
             setShowNotifDropdown(false);
             const updatedSeenThreads = [...seenThreads, target.id];
-            await db.collection('users').doc(user.uid).set({
+            setUserData(prev => ({ ...prev, seenForumThreadIds: updatedSeenThreads }));
+            db.collection('users').doc(user.uid).set({
               seenForumThreadIds: firebase.firestore.FieldValue.arrayUnion(target.id)
             }, { merge: true }).catch(()=>{});
-            setUserData(prev => ({ ...prev, seenForumThreadIds: updatedSeenThreads }));
             setSelectedCategory(forumCategories.find(c => c.id === target.categoryId) || forumCategories[0]);
             setSelectedThread(target);
             setCurrentScreen('forum');
@@ -1026,7 +1026,7 @@ export default function ClientScreens() {
               <View style={styles.detailCard}>
                  <Text style={{fontSize: 12, fontWeight: 'bold', color: '#C5A059', textAlign: 'center', marginBottom: 5}}>{formatDanishDate(m?.matchDate)}</Text>
                  <Text style={{fontSize: 22, fontWeight: '900', color: '#12352A', textAlign: 'center', marginBottom: 15}}>{m ? `${m.homeTeam} vs AB` : (selectedAwayInfo.opponent ? `${selectedAwayInfo.opponent} vs AB` : 'Udebane')}</Text>
-                 <Text style={{fontSize: 16, color: '#333', lineHeight: 26}}>{selectedAwayInfo.infoText || selectedAwayInfo.text || 'Ingen information tilgængelig.'}</Text>
+                 <Text style={{fontSize: 16, color: '#333', lineHeight: 26}}>{selectedAwayInfo.infoText}</Text>
               </View>
             </ScrollView>
          </View>
@@ -1047,9 +1047,11 @@ export default function ClientScreens() {
             <View style={{backgroundColor: '#FFFFFF', padding: 30, borderRadius: 12, alignItems: 'center', marginTop: 20, borderWidth: 1, borderColor: '#C5A059'}}><Text style={{fontSize: 16, fontWeight: 'bold', color: '#12352A', textAlign: 'center'}}>Ingen arrangerede ture planlagt endnu.</Text></View>
           ) : (
             sortedAwayInfo.map(info => (
-              <TouchableOpacity key={info.id} style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#C5A059', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}} onPress={async () => {
-                await db.collection('users').doc(user.uid).set({ seenAwayIds: firebase.firestore.FieldValue.arrayUnion(info.id) }, { merge: true }).catch(()=>{});
-                setUserData(prev => ({ ...prev, seenAwayIds: [...(prev?.seenAwayIds || []), info.id] }));
+              <TouchableOpacity key={info.id} style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#C5A059', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}} onPress={() => {
+                const seenAway = userData?.seenAwayIds || [];
+                const updatedSeenAway = [...seenAway, info.id];
+                setUserData(prev => ({ ...prev, seenAwayIds: updatedSeenAway }));
+                db.collection('users').doc(user.uid).set({ seenAwayIds: firebase.firestore.FieldValue.arrayUnion(info.id) }, { merge: true }).catch(()=>{});
                 setSelectedAwayInfo(info);
               }}>
                 <View style={{flex: 1}}>
