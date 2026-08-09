@@ -8,6 +8,49 @@ import { INITIAL_TEAM_DB } from './teamDatabase';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 
+// Officiel master-tidsplan udledt af dine screenshots (Runde 3 til 7)
+const OFFICIAL_MASTER_SCHEDULE = [
+  // Runde 3
+  { round: 'Round 3', tournament: 'Betinia Liga', homeTeam: 'Aarhus Fr', awayTeam: 'HB Køge', matchDate: '2026-08-08 18:00', finalScore: true, homeScore: 3, awayScore: 1 },
+  { round: 'Round 3', tournament: 'Betinia Liga', homeTeam: 'Hobro', awayTeam: 'AB', matchDate: '2026-08-08 18:00', finalScore: true, homeScore: 1, awayScore: 0 },
+  { round: 'Round 3', tournament: 'Betinia Liga', homeTeam: 'Hvidovre', awayTeam: 'Esbjerg', matchDate: '2026-08-09 18:00', finalScore: true, homeScore: 2, awayScore: 1 },
+  { round: 'Round 3', tournament: 'Betinia Liga', homeTeam: 'Aalborg', awayTeam: 'Kolding IF', matchDate: '2026-08-09 18:00', finalScore: true, homeScore: 1, awayScore: 1 },
+  { round: 'Round 3', tournament: 'Betinia Liga', homeTeam: 'Vejle', awayTeam: 'Hillerød', matchDate: '2026-08-09 18:00', finalScore: true, homeScore: 5, awayScore: 4 },
+  { round: 'Round 3', tournament: 'Betinia Liga', homeTeam: 'FC Fredericia', awayTeam: 'Vendsyssel FF', matchDate: '2026-08-09 18:00', finalScore: true, homeScore: 1, awayScore: 1 },
+  
+  // Runde 4
+  { round: 'Round 4', tournament: 'Betinia Liga', homeTeam: 'Aalborg', awayTeam: 'FC Fredericia', matchDate: '2026-08-14 19:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 4', tournament: 'Betinia Liga', homeTeam: 'Kolding IF', awayTeam: 'Vejle', matchDate: '2026-08-14 19:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 4', tournament: 'Betinia Liga', homeTeam: 'Hillerød', awayTeam: 'Aarhus Fr', matchDate: '2026-08-15 13:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 4', tournament: 'Betinia Liga', homeTeam: 'Esbjerg', awayTeam: 'Hobro', matchDate: '2026-08-15 14:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 4', tournament: 'Betinia Liga', homeTeam: 'HB Køge', awayTeam: 'Hvidovre', matchDate: '2026-08-15 16:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 4', tournament: 'Betinia Liga', homeTeam: 'Vendsyssel FF', awayTeam: 'AB', matchDate: '2026-08-16 14:00', finalScore: false, homeScore: null, awayScore: null },
+
+  // Runde 5
+  { round: 'Round 5', tournament: 'Betinia Liga', homeTeam: 'Vendsyssel FF', awayTeam: 'Hillerød', matchDate: '2026-08-20 19:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 5', tournament: 'Betinia Liga', homeTeam: 'Vejle', awayTeam: 'Esbjerg', matchDate: '2026-08-21 18:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 5', tournament: 'Betinia Liga', homeTeam: 'Hobro', awayTeam: 'Aalborg', matchDate: '2026-08-21 18:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 5', tournament: 'Betinia Liga', homeTeam: 'FC Fredericia', awayTeam: 'Aarhus Fr', matchDate: '2026-08-21 19:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 5', tournament: 'Betinia Liga', homeTeam: 'AB', awayTeam: 'Hvidovre', matchDate: '2026-08-22 18:30', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 5', tournament: 'Betinia Liga', homeTeam: 'HB Køge', awayTeam: 'Kolding IF', matchDate: '2026-08-23 13:00', finalScore: false, homeScore: null, awayScore: null },
+
+  // Runde 6
+  { round: 'Round 6', tournament: 'Betinia Liga', homeTeam: 'Aarhus Fr', awayTeam: 'Vejle', matchDate: '2026-08-28 18:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 6', tournament: 'Betinia Liga', homeTeam: 'Kolding IF', awayTeam: 'AB', matchDate: '2026-08-29 13:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 6', tournament: 'Betinia Liga', homeTeam: 'Aalborg', awayTeam: 'HB Køge', matchDate: '2026-08-29 14:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 6', tournament: 'Betinia Liga', homeTeam: 'Hvidovre', awayTeam: 'FC Fredericia', matchDate: '2026-08-30 13:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 6', tournament: 'Betinia Liga', homeTeam: 'Hillerød', awayTeam: 'Hobro', matchDate: '2026-08-30 13:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 6', tournament: 'Betinia Liga', homeTeam: 'Esbjerg', awayTeam: 'Vendsyssel FF', matchDate: '2026-08-30 15:00', finalScore: false, homeScore: null, awayScore: null },
+
+  // Runde 7
+  { round: 'Round 7', tournament: 'Betinia Liga', homeTeam: 'Vejle', awayTeam: 'Vendsyssel FF', matchDate: '2026-09-04 18:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 7', tournament: 'Betinia Liga', homeTeam: 'Hobro', awayTeam: 'Hvidovre', matchDate: '2026-09-04 18:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 7', tournament: 'Betinia Liga', homeTeam: 'HB Køge', awayTeam: 'Hillerød', matchDate: '2026-09-04 19:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 7', tournament: 'Betinia Liga', homeTeam: 'FC Fredericia', awayTeam: 'Esbjerg', matchDate: '2026-09-05 14:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 7', tournament: 'Betinia Liga', homeTeam: 'AB', awayTeam: 'Aalborg', matchDate: '2026-09-05 14:00', finalScore: false, homeScore: null, awayScore: null },
+  { round: 'Round 7', tournament: 'Betinia Liga', homeTeam: 'Aarhus Fr', awayTeam: 'Kolding IF', matchDate: '2026-09-06 13:00', finalScore: false, homeScore: null, awayScore: null }
+];
+
 export default function AdminScreens() {
   const ctx = useContext(AppContext);
   const { currentScreen, setCurrentScreen, userData, matchesList, newsList, usersList, auditLogs, pendingSongs, songsList, allFractions, rssFeedsList, awayInfoList, forumCategories, customTeams, formatDanishDate, appSettings, setAppSettings, logActivity, showAlert } = ctx;
@@ -18,14 +61,14 @@ export default function AdminScreens() {
   const [isCalculatingPoints, setIsCalculatingPoints] = useState(false);
   const [isSyncingMatches, setIsSyncingMatches] = useState(false);
   
-  // Ny sync review modal state til gennemgang, accept/afvis og dubletkontrol
+  // Synkroniserings- og gennemgangsstate
   const [showSyncReviewModal, setShowSyncReviewModal] = useState(false);
   const [detectedSyncChanges, setDetectedSyncChanges] = useState([]);
 
   const [showAddMatchModal, setShowAddMatchModal] = useState(false);
   const [editingMatchId, setEditingMatchId] = useState(null);
   const [newMatchTeamSelector, setNewMatchTeamSelector] = useState({ type: null }); 
-  const [newMatchData, setNewMatchData] = useState({ homeTeam: 'AB', awayTeam: 'AaB Fodbold', date: new Date(), round: '', tournament: 'Betano Pokalen', alternativeStadium: '' });
+  const [newMatchData, setNewMatchData] = useState({ homeTeam: 'AB', awayTeam: 'AaB Fodbold', date: new Date(), round: '', tournament: 'Betania Liga', alternativeStadium: '' });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [expandedAdminRounds, setExpandedAdminRounds] = useState({});
@@ -53,7 +96,6 @@ export default function AdminScreens() {
   const [newAwayMatchId, setNewAwayMatchId] = useState(null);
   const [newAwayInfoText, setNewAwayInfoText] = useState('');
 
-  // Forum Admin State
   const [newForumName, setNewForumName] = useState('');
   const [newForumDesc, setNewForumDesc] = useState('');
   const [newForumRoles, setNewForumRoles] = useState([]);
@@ -204,23 +246,21 @@ export default function AdminScreens() {
     const sortedAdminRounds = Object.keys(adminMatchesByRound).sort((a, b) => Math.min(...adminMatchesByRound[a].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())) - Math.min(...adminMatchesByRound[b].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())));
     const hasMissingResults = (matchesInRound) => { const now = new Date().getTime(); return matchesInRound.some(match => !match.matchDate ? false : new Date(match.matchDate.replace(' ', 'T')).getTime() < now && match.finalScore === false); };
 
-    // Avanceret synkroniserings- og scanningsfunktion med dublet-tjek og godkend/afvis ændringer
+    // Synkroniserings- og scanningsfunktion mod OFFICIAL_MASTER_SCHEDULE
     const handleRunMatchSync = async () => {
       setIsSyncingMatches(true);
       try {
-        await new Promise(r => setTimeout(r, 1000));
+        await new Promise(r => setTimeout(r, 800));
         let changes = [];
         let seenMatches = new Set();
 
-        // 1. Scan for dubletter i eksisterende kampliste
+        // 1. Tjek for dubletter i databasen
         matchesList.forEach(m => {
           const matchKey = `${m.homeTeam}_${m.awayTeam}_${m.round}`.toLowerCase();
           if (seenMatches.has(matchKey)) {
             changes.push({
-              id: m.id,
-              type: 'duplicate',
-              title: `Dublet fundet: ${m.homeTeam} vs ${m.awayTeam} (${m.round})`,
-              description: `Der findes allerede en identisk kamp i samme runde. Foreslår sletning af denne dublet.`,
+              title: `Dublet: ${m.homeTeam} vs ${m.awayTeam} (${m.round})`,
+              description: `Kampen findes flere gange. Foreslår at slette denne dublet.`,
               action: async () => { await db.collection('matches').doc(m.id).delete(); }
             });
           } else {
@@ -228,30 +268,68 @@ export default function AdminScreens() {
           }
         });
 
-        // 2. Scan for udestående resultater på kampe, der er startet
-        const nowTime = new Date().getTime();
-        matchesList.forEach(m => {
-          if (m.matchDate && new Date(m.matchDate.replace(' ', 'T')).getTime() < nowTime && !m.finalScore && m.homeScore === null) {
+        // 2. Sammenlign database med OFFICIAL_MASTER_SCHEDULE
+        OFFICIAL_MASTER_SCHEDULE.forEach(official => {
+          const existing = matchesList.find(m => 
+            m.homeTeam.toLowerCase() === official.homeTeam.toLowerCase() && 
+            m.awayTeam.toLowerCase() === official.awayTeam.toLowerCase() && 
+            m.round.toLowerCase() === official.round.toLowerCase()
+          );
+
+          if (!existing) {
             changes.push({
-              id: m.id,
-              type: 'missing_score',
-              title: `Mangler resultat: ${m.homeTeam} vs ${m.awayTeam}`,
-              description: `Kampen er startet (${formatDanishDate(m.matchDate)}), men har ikke fået registreret et endeligt resultat endnu.`,
-              action: async () => { /* Kan markeres eller håndteres direkte */ }
+              title: `Manglende kamp: ${official.homeTeam} vs ${official.awayTeam}`,
+              description: `Findes i det officielle program for ${official.round}, men mangler i appen. Foreslår at oprette den.`,
+              action: async () => {
+                await db.collection('matches').add({
+                  homeTeam: official.homeTeam,
+                  awayTeam: official.awayTeam,
+                  matchDate: official.matchDate,
+                  round: official.round,
+                  tournament: official.tournament,
+                  alternativeStadium: null,
+                  finalScore: official.finalScore,
+                  homeScore: official.homeScore,
+                  awayScore: official.awayScore,
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+              }
             });
+          } else {
+            // Tjek tidsændringer
+            if (existing.matchDate !== official.matchDate) {
+              changes.push({
+                title: `Tidsændring: ${official.homeTeam} vs ${official.awayTeam}`,
+                description: `Tid ændret fra ${existing.matchDate} til ${official.matchDate}.`,
+                action: async () => { await db.collection('matches').doc(existing.id).update({ matchDate: official.matchDate }); }
+              });
+            }
+            // Tjek resultat-afvigelser på færdigspillede kampe
+            if (official.finalScore && (!existing.finalScore || existing.homeScore !== official.homeScore || existing.awayScore !== official.awayScore)) {
+              changes.push({
+                title: `Resultat opdatering: ${official.homeTeam} vs ${official.awayTeam}`,
+                description: `Officielt resultat er ${official.homeScore}-${official.awayScore} (nuværende: ${existing.homeScore !== null ? `${existing.homeScore}-${existing.awayScore}` : 'Ikke sat'}).`,
+                action: async () => {
+                  await db.collection('matches').doc(existing.id).update({
+                    homeScore: official.homeScore,
+                    awayScore: official.awayScore,
+                    finalScore: true
+                  });
+                }
+              });
+            }
           }
         });
 
-        // Hvis ingen ændringer eller dubletter blev fundet
         if (changes.length === 0) {
-          showAlert("Synkronisering fuldført", "Kampprogrammet er scannet igennem. Ingen dubletter eller uoverensstemmelser fundet!");
-          logActivity('kampe', 'Kampprogram synkroniseret - ingen fejl fundet', userData?.username || 'Admin');
+          showAlert("Synkronisering fuldført", "Kampprogrammet er scannet igennem mod master-data. Alt er opdateret og korrekt!");
+          logActivity('kampe', 'Kampprogram synkroniseret - ingen ændringer nødvendige', userData?.username || 'Admin');
         } else {
           setDetectedSyncChanges(changes);
           setShowSyncReviewModal(true);
         }
       } catch(e) {
-        showAlert("Fejl ved synkronisering", e.message);
+        showAlert("Fejl", e.message);
       } finally {
         setIsSyncingMatches(false);
       }
@@ -262,9 +340,8 @@ export default function AdminScreens() {
         <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
         <Text style={styles.loginHeader}>⚽ RESULTATER</Text>
 
-        {/* Synkroniseringsknap med loading bar */}
         <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#12352A', borderColor: '#C5A059', borderWidth: 1, marginBottom: 15}]} onPress={handleRunMatchSync} disabled={isSyncingMatches}>
-          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>{isSyncingMatches ? '⏳ SCANNER KAMPPROGRAM...' : '🔄 SYNKRONISER & TJEK FOR DUBLATTER / ÆNDRINGER'}</Text>
+          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>{isSyncingMatches ? '⏳ SYNKRONISERER MED MASTER-DATA...' : '🔄 SYNKRONISER KAMPPROGRAM (TJEK MOD MASTER-DATA)'}</Text>
         </TouchableOpacity>
 
         {isSyncingMatches && (
@@ -303,7 +380,7 @@ export default function AdminScreens() {
           } catch(e) { showAlert("Fejl", e.message); } finally { setIsCalculatingPoints(false); }
         }} disabled={isCalculatingPoints}><Text style={[styles.primaryButtonText, {color: '#111'}]}>{isCalculatingPoints ? '🔄 GENBEREGNER ALT...' : '🔄 GENBEREGN ALLE POINT & STATS'}</Text></TouchableOpacity>
 
-        <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 12, borderRadius: 8, marginBottom: 15}]} onPress={() => { setEditingMatchId(null); setNewMatchData({ homeTeam: 'AB', awayTeam: 'AaB Fodbold', date: new Date(), round: 'Pokalrunde 2', tournament: 'Betano Pokalen', alternativeStadium: '' }); setShowAddMatchModal(true); }}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>➕ TILFØJ NY KAMP MANUELT</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 12, borderRadius: 8, marginBottom: 15}]} onPress={() => { setEditingMatchId(null); setNewMatchData({ homeTeam: 'AB', awayTeam: 'AaB Fodbold', date: new Date(), round: 'Pokalrunde 2', tournament: 'Betinia Liga', alternativeStadium: '' }); setShowAddMatchModal(true); }}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>➕ TILFØJ NY KAMP MANUELT</Text></TouchableOpacity>
 
         <Text style={[styles.sectionTitle, {marginTop: 30}]}>Kampe & Resultater</Text>
         {sortedAdminRounds.map((roundName) => {
@@ -319,7 +396,7 @@ export default function AdminScreens() {
                     <View key={m.id} style={{backgroundColor: '#fff', padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#E5E5DF'}}>
                       <View style={{flexDirection: 'row', justifyContent: 'space-between'}}>
                         <Text style={{fontWeight: 'bold', color: '#12352A', flex: 1}}>{m.round} ({m.tournament}): {m.homeTeam} vs {m.awayTeam}</Text>
-                        <TouchableOpacity onPress={() => { setEditingMatchId(m.id); setNewMatchData({ homeTeam: m.homeTeam, awayTeam: m.awayTeam, date: new Date(m.matchDate.replace(' ', 'T')), round: m.round, tournament: m.tournament || 'Betano Pokalen', alternativeStadium: m.alternativeStadium || '' }); setShowAddMatchModal(true); }}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>✏️ RET INFO</Text></TouchableOpacity>
+                        <TouchableOpacity onPress={() => { setEditingMatchId(m.id); setNewMatchData({ homeTeam: m.homeTeam, awayTeam: m.awayTeam, date: new Date(m.matchDate.replace(' ', 'T')), round: m.round, tournament: m.tournament || 'Betinia Liga', alternativeStadium: m.alternativeStadium || '' }); setShowAddMatchModal(true); }}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>✏️ RET INFO</Text></TouchableOpacity>
                       </View>
                       <Text style={{fontSize: 11, color: '#666', marginBottom: 6}}>Dato: {formatDanishDate(m.matchDate)}</Text>
                       <View style={{flexDirection: 'row', alignItems: 'center', marginBottom: 10}}>
@@ -340,16 +417,16 @@ export default function AdminScreens() {
           );
         })}
 
-        {/* Modal til gennemgang og godkendelse/afvisning af synkroniseringsændringer og dubletter */}
+        {/* Modal til godkend eller afvis af fundne ændringer */}
         <Modal visible={showSyncReviewModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContainer, {maxHeight: '85%'}]}>
-              <Text style={styles.modalHeader}>🔄 SYNKRONISERING & ÆNDRINGER</Text>
-              <Text style={{fontSize: 12, color: '#666', marginBottom: 15, textAlign: 'center'}}>Følgende uoverensstemmelser eller dubletter blev fundet i kampprogrammet. Vælg om du vil acceptere eller afvise ændringen:</Text>
+              <Text style={styles.modalHeader}>🔄 SYNCHRONISERING & ÆNDRINGER</Text>
+              <Text style={{fontSize: 12, color: '#666', marginBottom: 15, textAlign: 'center'}}>Følgende forskelle blev fundet mellem appen og de officielle data:</Text>
               
               <ScrollView style={{width: '100%', maxHeight: 320, marginBottom: 15}}>
                 {detectedSyncChanges.length === 0 ? (
-                  <Text style={{textAlign: 'center', fontStyle: 'italic', color: '#666', padding: 20}}>Ingen udestående ændringer at gennemgå.</Text>
+                  <Text style={{textAlign: 'center', fontStyle: 'italic', color: '#666', padding: 20}}>Ingen ændringer fundet.</Text>
                 ) : (
                   detectedSyncChanges.map((change, index) => (
                     <View key={index} style={{backgroundColor: '#F9F9F6', padding: 12, borderRadius: 8, marginBottom: 10, borderWidth: 1, borderColor: '#E5E5DF'}}>
@@ -362,8 +439,8 @@ export default function AdminScreens() {
                             setDetectedSyncChanges(prev => prev.filter((_, i) => i !== index));
                             if (detectedSyncChanges.length <= 1) {
                               setShowSyncReviewModal(false);
-                              showAlert("Synkronisering", "Valgte ændringer blev godkendt og anvendt!");
-                              logActivity('kampe', 'Synkroniseringsændringer godkendt af admin', userData?.username || 'Admin');
+                              showAlert("Synkronisering", "Ændring godkendt og anvendt!");
+                              logActivity('kampe', 'Synkroniseringsændring godkendt af admin', userData?.username || 'Admin');
                             }
                           } catch(err) {
                             showAlert("Fejl", err.message);
