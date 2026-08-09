@@ -20,10 +20,7 @@ export default function ClientScreens() {
   const [newThreadTitle, setNewThreadTitle] = useState('');
   const [newThreadContent, setNewThreadContent] = useState('');
   const [newReplyContent, setNewReplyContent] = useState('');
-  const [newCategoryName, setNewCategoryName] = useState('');
-  const [newCategoryDesc, setNewCategoryDesc] = useState('');
 
-  // Nyt State til Sange og Away Info
   const [selectedSong, setSelectedSong] = useState(null);
   const [showSongForm, setShowSongForm] = useState(false);
   const [selectedAwayInfo, setSelectedAwayInfo] = useState(null);
@@ -71,7 +68,14 @@ export default function ClientScreens() {
   const pendingSongsCount = ctx.pendingSongs?.length || 0;
   const adminNotificationsCount = pendingSongsCount + pendingResultsCount;
 
-  // Formater dato til kort måned (3 bogstaver) + klokkeslet for kommende kampe
+  // Tilladelsestjek for forum kategorier
+  const canAccessCategory = (cat) => {
+    if (isAdmin || isEditor || isSuperAdmin) return true;
+    const allowed = cat.allowedRoles;
+    if (!allowed || allowed.length === 0) return true; // Offentlig som standard
+    return allowed.includes(userData?.role || 'Alm. Bruger');
+  };
+
   const formatShortDateWithTime = (dateInput) => {
     if (!dateInput) return ''; let d;
     if (dateInput.toDate) d = dateInput.toDate();
@@ -83,7 +87,6 @@ export default function ClientScreens() {
     return `${days[d.getDay()]} ${d.getDate()}. ${months[d.getMonth()]} kl. ${String(d.getHours()).padStart(2, '0')}.${String(d.getMinutes()).padStart(2, '0')}`;
   };
 
-  // Lås tipspil til den globale runde, der indeholder den næste uafsluttede kamp
   useEffect(() => {
     if (currentScreen === 'tipspil' && matchesList.length > 0) {
       const unplayedMatches = matchesList.filter(m => !m.finalScore);
@@ -157,14 +160,11 @@ export default function ClientScreens() {
   };
 
   const renderProfileModal = () => {
-    let userRank = 'Ikke rangeret'; let winPercentage = 0;
+    let userRank = 'Ikke rangeret'; 
     if (ctx.viewingProfileUser) {
       const sortedLb = [...leaderboard].sort((a, b) => (b.points || 0) - (a.points || 0));
       const userRankIndex = sortedLb.findIndex(u => u.id === ctx.viewingProfileUser.id);
       if (userRankIndex !== -1) userRank = `${userRankIndex + 1}. plads`;
-      const stats = ctx.viewingProfileUser.stats || { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 };
-      const totalGuesses = stats.exactHits + stats.signHits + stats.misses;
-      if (totalGuesses > 0) winPercentage = Math.round(((stats.exactHits + stats.signHits) / totalGuesses) * 100);
     }
     return (
       <Modal visible={ctx.viewingProfileUser !== null} transparent animationType="slide">
@@ -192,7 +192,9 @@ export default function ClientScreens() {
 
   const TopBarMenu = () => (
     <>
-      <View style={styles.headerBannerContainer}><Image source={{ uri: 'https://i.imgur.com/fpRHIje.png' }} style={styles.headerImageBanner} resizeMode="cover" /></View>
+      <TouchableOpacity onPress={() => setCurrentScreen('home')} style={styles.headerBannerContainer} activeOpacity={0.9}>
+        <Image source={{ uri: 'https://i.imgur.com/fpRHIje.png' }} style={styles.headerImageBanner} resizeMode="cover" />
+      </TouchableOpacity>
       <View style={styles.menuBar}>
         <TouchableOpacity onPress={() => setMenuOpen(!menuOpen)} style={styles.menuBarButton}><Text style={styles.menuBarText}>{menuOpen ? '✖ LUK MENU' : '☰ MENU'} {!menuOpen && adminNotificationsCount > 0 && isAdmin && <Text style={{color: '#E30613'}}> 🔴</Text>}</Text></TouchableOpacity>
         <TouchableOpacity onPress={handleManualRefresh} style={styles.refreshBarButton}><Text style={styles.refreshBarText}>🔄 GENINDLÆS</Text></TouchableOpacity>
@@ -210,6 +212,7 @@ export default function ClientScreens() {
                 <TouchableOpacity style={styles.editProfileMenuBtn} onPress={() => { setUsername(userData?.username || ''); setAvatarUrl(userData?.photoURL || user?.photoURL || ''); setBio(userData?.bio || ''); setSignature(userData?.signature || ''); setCurrentScreen('editProfile'); setMenuOpen(false); }}><Text style={styles.editProfileMenuText}>✏️ REDIGER PROFIL</Text></TouchableOpacity>
               </View>
             )}
+            <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('home'); setMenuOpen(false); }}><Text style={styles.menuItemText}>🏠 FORSIDE</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setCurrentScreen('tipspil'); setMenuOpen(false); }}><Text style={styles.menuItemText}>⚽ TIPSSPIL</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setSelectedThread(null); setSelectedCategory(null); setCurrentScreen('forum'); setMenuOpen(false); }}><Text style={styles.menuItemText}>💬 FORUM</Text></TouchableOpacity>
             <TouchableOpacity style={styles.menuItem} onPress={() => { setSelectedSong(null); setShowSongForm(false); setCurrentScreen('songs'); setMenuOpen(false); }}><Text style={styles.menuItemText}>🎵 SANGE & TEKSTER</Text></TouchableOpacity>
@@ -553,6 +556,18 @@ export default function ClientScreens() {
     }
 
     if (selectedCategory) {
+      if (!canAccessCategory(selectedCategory)) {
+        return (
+          <View style={{flex: 1}}>
+            <TopBarMenu />
+            <ScrollView contentContainerStyle={styles.detailContainer}>
+              <TouchableOpacity onPress={() => setSelectedCategory(null)} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
+              <Text style={styles.loginHeader}>Adgang nægtet</Text>
+              <Text style={{textAlign: 'center', color: '#E30613', marginTop: 30}}>Du har ikke de nødvendige rettigheder til at se dette forum.</Text>
+            </ScrollView>
+          </View>
+        );
+      }
       const categoryThreads = visibleThreads.filter(t => t.categoryId === selectedCategory.id);
       return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
@@ -596,6 +611,8 @@ export default function ClientScreens() {
       );
     }
 
+    const visibleCategories = forumCategories.filter(cat => canAccessCategory(cat));
+
     return (
       <View style={{flex: 1}}>
         <TopBarMenu />
@@ -604,16 +621,7 @@ export default function ClientScreens() {
           <Text style={styles.loginHeader}>💬 AB FAN FORUM</Text>
           <Text style={styles.loginSubheader}>Vælg en kategori og deltag i debatten.</Text>
 
-          {isAdmin && (
-            <View style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059'}}>
-              <Text style={[styles.sectionTitle, {fontSize: 14, marginTop: 0}]}>🛠️ Opret nyt forum (Admin)</Text>
-              <TextInput style={styles.inputField} placeholder="Forum navn" placeholderTextColor="#888" value={newCategoryName} onChangeText={setNewCategoryName} />
-              <TextInput style={styles.inputField} placeholder="Beskrivelse" placeholderTextColor="#888" value={newCategoryDesc} onChangeText={setNewCategoryDesc} />
-              <TouchableOpacity style={styles.primaryButton} onPress={async () => { if (!newCategoryName.trim()) return alert("Indtast forum navn."); await db.collection('forum_categories').add({ name: newCategoryName, description: newCategoryDesc, createdAt: firebase.firestore.FieldValue.serverTimestamp() }); setNewCategoryName(''); setNewCategoryDesc(''); alert("Forum oprettet!"); }}><Text style={styles.primaryButtonText}>TILFØJ FORUM</Text></TouchableOpacity>
-            </View>
-          )}
-
-          {forumCategories.map((cat) => {
+          {visibleCategories.map((cat) => {
             const catThreads = visibleThreads.filter(t => t.categoryId === cat.id);
             const recentThreads = catThreads.slice(0, 2);
             return (
@@ -672,7 +680,6 @@ export default function ClientScreens() {
           <Text style={styles.loginHeader}>🎵 SANGE & TEKSTER</Text>
           <Text style={styles.loginSubheader}>Lær sangene at kende, eller indsend dine egne forslag til nye tribunesange!</Text>
 
-          {/* SANGE LISTE (LIFTABLE) */}
           {songsList.map((song) => (
             <TouchableOpacity key={song.id} style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: '#E5E5DF', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'}} onPress={() => setSelectedSong(song)}>
               <Text style={{fontSize: 16, fontWeight: 'bold', color: '#12352A'}}>{song.title}</Text>
@@ -680,7 +687,6 @@ export default function ClientScreens() {
             </TouchableOpacity>
           ))}
 
-          {/* FORESLÅ FORM (PAKKET VÆK) */}
           {user ? (
             <View style={{marginTop: 20}}>
                <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', borderColor: '#C5A059'}]} onPress={() => setShowSongForm(!showSongForm)}>
@@ -707,6 +713,22 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'awayInfo') {
+    if (!canViewAwayInfo) {
+      return (
+        <View style={{flex: 1}}>
+          <TopBarMenu />
+          <ScrollView contentContainerStyle={styles.detailContainer}>
+            <TouchableOpacity onPress={() => setCurrentScreen('home')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
+            <Text style={styles.loginHeader}>🚌 AWAY INFO</Text>
+            <View style={{backgroundColor: '#FFFFFF', padding: 30, borderRadius: 12, alignItems: 'center', marginTop: 20, borderWidth: 1, borderColor: '#E30613'}}>
+              <Text style={{fontSize: 16, fontWeight: 'bold', color: '#E30613', textAlign: 'center', marginBottom: 10}}>Adgang begrænset</Text>
+              <Text style={{textAlign: 'center', color: '#333'}}>Denne side er udelukkende for verificerede AB fans, redaktører og administratorer.</Text>
+            </View>
+          </ScrollView>
+        </View>
+      );
+    }
+
     if (selectedAwayInfo) {
        const m = selectedAwayInfo.matchDetails;
        return (
