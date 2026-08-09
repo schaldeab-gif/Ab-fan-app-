@@ -243,7 +243,6 @@ export default function AdminScreens() {
 
   const availableRoles = ['Alm. Bruger', 'Verificeret AB Fan', 'Redaktør', 'Admin', 'Super Admin'];
 
-  // Smart normalisering af holdnavne
   const normalizeTeamName = (name) => {
     if (!name) return '';
     const n = name.toLowerCase().trim();
@@ -265,7 +264,8 @@ export default function AdminScreens() {
   const normalizeRoundName = (roundStr) => {
     if (!roundStr) return '';
     const num = roundStr.replace(/\D/g, '');
-    return `${num}. runde`;
+    if (!num) return roundStr;
+    return `${num}. Runde`;
   };
 
   if (currentScreen === 'adminHub') {
@@ -411,6 +411,7 @@ export default function AdminScreens() {
     const sortedAdminRounds = Object.keys(adminMatchesByRound).sort((a, b) => Math.min(...adminMatchesByRound[a].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())) - Math.min(...adminMatchesByRound[b].map(m => new Date(m.matchDate?.replace(' ', 'T') || 0).getTime())));
     const hasMissingResults = (matchesInRound) => { const now = new Date().getTime(); return matchesInRound.some(match => !match.matchDate ? false : new Date(match.matchDate.replace(' ', 'T')).getTime() < now && match.finalScore === false); };
 
+    // Synkroniseringsfunktion, der automatisk fletter runder (f.eks. "Runde 1" -> "1. Runde") og fjerner dubletter
     const handleRunMatchSync = async () => {
       setIsSyncingMatches(true);
       try {
@@ -418,19 +419,27 @@ export default function AdminScreens() {
         let changes = [];
         let seenMatches = new Set();
 
-        matchesList.forEach(m => {
-          const matchKey = `${normalizeTeamName(m.homeTeam)}_${normalizeTeamName(m.awayTeam)}_${normalizeRoundName(m.round)}`.toLowerCase();
+        // 1. Tjek for dubletter og flet runder automatisk
+        for (let m of matchesList) {
+          const expectedRound = normalizeRoundName(m.round);
+          // Hvis runden hedder "Runde 1" i stedet for "1. Runde", opdaterer vi den med det samme
+          if (m.round !== expectedRound && !m.round.toLowerCase().includes('pokal')) {
+            await db.collection('matches').doc(m.id).update({ round: expectedRound });
+          }
+
+          const matchKey = `${normalizeTeamName(m.homeTeam)}_${normalizeTeamName(m.awayTeam)}_${expectedRound}`.toLowerCase();
           if (seenMatches.has(matchKey)) {
             changes.push({
-              title: `Dublet: ${m.homeTeam} vs ${m.awayTeam} (${m.round})`,
+              title: `Dublet: ${m.homeTeam} vs ${m.awayTeam} (${expectedRound})`,
               description: `Kampen findes flere gange. Foreslår at slette denne dublet.`,
               action: async () => { await db.collection('matches').doc(m.id).delete(); }
             });
           } else {
             seenMatches.add(matchKey);
           }
-        });
+        }
 
+        // 2. Sammenlign med OFFICIAL_MASTER_SCHEDULE
         OFFICIAL_MASTER_SCHEDULE.forEach(official => {
           const existing = matchesList.find(m => 
             normalizeTeamName(m.homeTeam) === normalizeTeamName(official.homeTeam) && 
@@ -458,9 +467,6 @@ export default function AdminScreens() {
               }
             });
           } else {
-            if (existing.round !== official.round) {
-              db.collection('matches').doc(existing.id).update({ round: official.round }).catch(()=>{});
-            }
             if (existing.matchDate !== official.matchDate) {
               changes.push({
                 title: `Tidsændring: ${official.homeTeam} vs ${official.awayTeam}`,
@@ -485,8 +491,8 @@ export default function AdminScreens() {
         });
 
         if (changes.length === 0) {
-          showAlert("Synkronisering fuldført", "Kampprogrammet er scannet igennem mod bold.dk master-data. Alt er opdateret og korrekt!");
-          logActivity('kampe', 'Kampprogram synkroniseret mod bold.dk - ingen ændringer nødvendige', userData?.username || 'Admin');
+          showAlert("Synkronisering fuldført", "Kampprogrammet er scannet igennem. Runderne er flettet og alt er opdateret!");
+          logActivity('kampe', 'Kampprogram synkroniseret og runder flettet', userData?.username || 'Admin');
         } else {
           setDetectedSyncChanges(changes);
           setShowSyncReviewModal(true);
@@ -504,7 +510,7 @@ export default function AdminScreens() {
         <Text style={styles.loginHeader}>⚽ RESULTATER</Text>
 
         <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#12352A', borderColor: '#C5A059', borderWidth: 1, marginBottom: 15}]} onPress={handleRunMatchSync} disabled={isSyncingMatches}>
-          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>{isSyncingMatches ? '⏳ SYNKRONISERER MED BOLD.DK...' : '🔄 SYNKRONISER KAMPPROGRAM (BOLD.DK MASTER-DATA)'}</Text>
+          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>{isSyncingMatches ? '⏳ SYNKRONISERER & FLETTER RUNDER...' : '🔄 SYNKRONISER KAMPPROGRAM (FLET RUNDER & TJEK)'}</Text>
         </TouchableOpacity>
 
         {isSyncingMatches && (
@@ -580,6 +586,7 @@ export default function AdminScreens() {
           );
         })}
 
+        {/* Modal til godkend eller afvis af fundne ændringer */}
         <Modal visible={showSyncReviewModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContainer, {maxHeight: '85%'}]}>
@@ -692,7 +699,6 @@ export default function AdminScreens() {
         <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
         <Text style={styles.loginHeader}>🛡️ ADMINISTRER HOLD</Text>
         
-        {/* Opret nyt hold */}
         <View style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059', width: '100%'}}>
           <Text style={[styles.sectionTitle, {marginTop: 0}]}>Opret Nyt Hold</Text>
           <TextInput style={styles.inputField} placeholder="Holdets navn (f.eks. Nykøbing FC)" value={newTeamName} onChangeText={setNewTeamName} />
@@ -711,7 +717,6 @@ export default function AdminScreens() {
           }}><Text style={styles.primaryButtonText}>GEM HOLD</Text></TouchableOpacity>
         </View>
 
-        {/* Modal til redigering af hold og visningsnavn */}
         <Modal visible={editingTeamKey !== null} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={styles.modalContainer}>
