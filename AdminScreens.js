@@ -196,6 +196,7 @@ export default function AdminScreens() {
   const [logCategoryFilter, setLogCategoryFilter] = useState('Alle');
   const [isCalculatingPoints, setIsCalculatingPoints] = useState(false);
   const [isSyncingMatches, setIsSyncingMatches] = useState(false);
+  const [isSyncingStadiums, setIsSyncingStadiums] = useState(false);
   
   const [showSyncReviewModal, setShowSyncReviewModal] = useState(false);
   const [detectedSyncChanges, setDetectedSyncChanges] = useState([]);
@@ -539,6 +540,86 @@ export default function AdminScreens() {
 
     const hasType = (type) => detectedSyncChanges.some(c => c.type === type);
 
+    const handlePreviewStadiumSync = () => {
+      let updates = [];
+      
+      for (let m of matchesList) {
+        const homeStadium = TEAM_DB[m.homeTeam]?.stadium;
+        if (homeStadium && !m.alternativeStadium) {
+          updates.push({ match: m, newStadium: homeStadium });
+        }
+      }
+
+      if (updates.length === 0) {
+        showAlert("Ingen ændringer", "Alle kampe har allerede et stadion tildelt, eller også mangler hjemmeholdene et stadion i hold-databasen.");
+        return;
+      }
+
+      let previewMsg = updates.slice(0, 10).map(u => `${u.match.homeTeam}: ${u.newStadium}`).join('\n');
+      if (updates.length > 10) {
+        previewMsg += `\n... og ${updates.length - 10} andre kampe.`;
+      }
+
+      Alert.alert(
+        "Godkend Stadion Sync",
+        `Følgende kampe vil få tildelt standard hjemmebane:\n\n${previewMsg}\n\nVil du fortsætte?`,
+        [
+          { text: "Annuller", style: "cancel" },
+          { text: "Ja, synkroniser", onPress: () => executeStadiumSync(updates) }
+        ]
+      );
+    };
+
+    const executeStadiumSync = async (updates) => {
+      setIsSyncingStadiums(true);
+      try {
+        for (let u of updates) {
+          await db.collection('matches').doc(u.match.id).update({ alternativeStadium: u.newStadium });
+        }
+        showAlert("Succes", `Auto-udfyldte stadion for ${updates.length} kampe!`);
+        logActivity('kampe', `Auto-udfyldte stadion for ${updates.length} kampe`, userData?.username || 'Admin');
+      } catch (e) {
+        showAlert("Fejl", e.message);
+      } finally {
+        setIsSyncingStadiums(false);
+      }
+    };
+
+    const handleCalculatePoints = async () => {
+      setIsCalculatingPoints(true);
+      try {
+        const finishedMatches = matchesList.filter(m => m.finalScore === true);
+        const usersSnap = await db.collection('users').get();
+        for (let userDoc of usersSnap.docs) {
+          const uid = userDoc.id; 
+          const predSnap = await db.collection('users').doc(uid).collection('predictions').doc('current').get();
+          let totalPoints = 0; let roundPoints = {}; let stats = { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }; let updates = {};
+          if (predSnap.exists) {
+            const preds = predSnap.data();
+            for (let m of finishedMatches) {
+              const matchPred = preds[m.id];
+              if (matchPred && matchPred.home !== undefined && matchPred.home !== '' && matchPred.away !== undefined && matchPred.away !== '') {
+                const predH = parseInt(matchPred.home, 10); const predA = parseInt(matchPred.away, 10);
+                let pts = 0; let exact = false; let sign = false;
+                if (predH === m.homeScore && predA === m.awayScore) { pts = 3; exact = true; }
+                else if ((predH > predA && m.homeScore > m.awayScore) || (predH < predA && m.homeScore < m.awayScore) || (predH === predA && m.homeScore === m.awayScore)) { pts = 1; sign = true; }
+                if (exact) stats.exactHits++; else if (sign) stats.signHits++; else stats.misses++;
+                if (preds[m.round]?.dobbeltOpMatchId === m.id || preds[m.round]?.jokerMatchId === m.id) { pts *= 2; if (pts > 0) stats.doubleUpHits++; }
+                totalPoints += pts; roundPoints[m.round] = (roundPoints[m.round] || 0) + pts; updates[`${m.id}.earnedPoints`] = pts;
+              }
+            }
+            if (Object.keys(updates).length > 0) await db.collection('users').doc(uid).collection('predictions').doc('current').update(updates);
+          }
+          await db.collection('users').doc(uid).update({ points: totalPoints, roundPoints: roundPoints, stats: stats });
+        }
+        showAlert("Succes!", "Genberegnet point og statistik for alle brugere.");
+      } catch(e) { 
+        showAlert("Fejl", e.message); 
+      } finally { 
+        setIsCalculatingPoints(false); 
+      }
+    };
+
     return (
       <ScrollView contentContainerStyle={styles.loginScreenContainer}>
         <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
@@ -554,55 +635,29 @@ export default function AdminScreens() {
           </View>
         )}
 
-        {/* Knap til auto-udfyld af stadioner for alle eksisterende kampe */}
-        <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 12, borderRadius: 8, marginBottom: 15}]} onPress={async () => {
-          try {
-            let count = 0;
-            for (let m of matchesList) {
-              const stad = TEAM_DB[m.homeTeam]?.stadium;
-              if (stad && !m.alternativeStadium) {
-                await db.collection('matches').doc(m.id).update({ alternativeStadium: stad });
-                count++;
-              }
-            }
-            showAlert("Succes", `Auto-udfyldte stadion for ${count} kampe!`);
-            logActivity('kampe', `Auto-udfyldte stadion for ${count} kampe`, userData?.username || 'Admin');
-          } catch (e) {
-            showAlert("Fejl", e.message);
-          }
-        }}>
-          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>🏟️ AUTO-UDFYLD STANDARD STADION FOR ALLE KAMPE</Text>
+        <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 12, borderRadius: 8, marginBottom: 15}]} onPress={handlePreviewStadiumSync} disabled={isSyncingStadiums}>
+          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>
+            {isSyncingStadiums ? '⏳ SYNKRONISERER STADIONS...' : '🏟️ AUTO-UDFYLD STANDARD STADION FOR ALLE KAMPE'}
+          </Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#C5A059', marginBottom: 20}]} onPress={async () => {
-          setIsCalculatingPoints(true);
-          try {
-            const finishedMatches = matchesList.filter(m => m.finalScore === true);
-            const usersSnap = await db.collection('users').get();
-            for (let userDoc of usersSnap.docs) {
-              const uid = userDoc.id; const predSnap = await db.collection('users').doc(uid).collection('predictions').doc('current').get();
-              let totalPoints = 0; let roundPoints = {}; let stats = { exactHits: 0, signHits: 0, misses: 0, doubleUpHits: 0 }; let updates = {};
-              if (predSnap.exists) {
-                const preds = predSnap.data();
-                for (let m of finishedMatches) {
-                  const matchPred = preds[m.id];
-                  if (matchPred && matchPred.home !== undefined && matchPred.home !== '' && matchPred.away !== undefined && matchPred.away !== '') {
-                    const predH = parseInt(matchPred.home, 10); const predA = parseInt(matchPred.away, 10);
-                    let pts = 0; let exact = false; let sign = false;
-                    if (predH === m.homeScore && predA === m.awayScore) { pts = 3; exact = true; }
-                    else if ((predH > predA && m.homeScore > m.awayScore) || (predH < predA && m.homeScore < m.awayScore) || (predH === predA && m.homeScore === m.awayScore)) { pts = 1; sign = true; }
-                    if (exact) stats.exactHits++; else if (sign) stats.signHits++; else stats.misses++;
-                    if (preds[m.round]?.dobbeltOpMatchId === m.id || preds[m.round]?.jokerMatchId === m.id) { pts *= 2; if (pts > 0) stats.doubleUpHits++; }
-                    totalPoints += pts; roundPoints[m.round] = (roundPoints[m.round] || 0) + pts; updates[`${m.id}.earnedPoints`] = pts;
-                  }
-                }
-                if (Object.keys(updates).length > 0) await db.collection('users').doc(uid).collection('predictions').doc('current').update(updates);
-              }
-              await db.collection('users').doc(uid).update({ points: totalPoints, roundPoints: roundPoints, stats: stats });
-            }
-            showAlert("Succes!", "Genberegnet point og statistik for alle brugere.");
-          } catch(e) { showAlert("Fejl", e.message); } finally { setIsCalculatingPoints(false); }
-        }} disabled={isCalculatingPoints}><Text style={[styles.primaryButtonText, {color: '#111'}]}>{isCalculatingPoints ? '🔄 GENBEREGNER ALT...' : '🔄 GENBEREGN ALLE POINT & STATS'}</Text></TouchableOpacity>
+        {isSyncingStadiums && (
+          <View style={{width: '100%', height: 6, backgroundColor: '#E5E5DF', borderRadius: 3, marginBottom: 15, overflow: 'hidden'}}>
+            <View style={{width: '75%', height: '100%', backgroundColor: '#C5A059'}} />
+          </View>
+        )}
+
+        <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#C5A059', marginBottom: 20}]} onPress={handleCalculatePoints} disabled={isCalculatingPoints}>
+          <Text style={[styles.primaryButtonText, {color: '#111'}]}>
+            {isCalculatingPoints ? '🔄 GENBEREGNER ALT...' : '🔄 GENBEREGN ALLE POINT & STATS'}
+          </Text>
+        </TouchableOpacity>
+
+        {isCalculatingPoints && (
+          <View style={{width: '100%', height: 6, backgroundColor: '#E5E5DF', borderRadius: 3, marginBottom: 15, overflow: 'hidden'}}>
+            <View style={{width: '75%', height: '100%', backgroundColor: '#12352A'}} />
+          </View>
+        )}
 
         <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 12, borderRadius: 8, marginBottom: 15}]} onPress={() => { 
           setEditingMatchId(null); 
@@ -659,7 +714,6 @@ export default function AdminScreens() {
           );
         })}
 
-        {/* Modal med kategoriserede knapper og rundennavne */}
         <Modal visible={showSyncReviewModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContainer, {maxHeight: '90%'}]}>
@@ -736,7 +790,7 @@ export default function AdminScreens() {
 
         <Modal visible={showAddMatchModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalContainer, {maxHeight: '90%', flexShrink: 1}]}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContainer, {maxHeight: '90%', flexShrink: 1}]}>
               <Text style={styles.modalHeader}>{editingMatchId ? 'RET KAMP INFO' : 'OPRET KAMP'}</Text>
               {newMatchTeamSelector.type ? (
                 <View style={{width: '100%', flex: 1, minHeight: 250, backgroundColor: '#FFFFFF', borderRadius: 8}}>
@@ -821,7 +875,7 @@ export default function AdminScreens() {
                   <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Alternativt Stadion (Valgfrit)</Text>
                   <TextInput 
                     style={styles.inputField} 
-                    placeholder="F.eks. Parken" 
+                    placeholder="Angiv stadion" 
                     value={newMatchData.alternativeStadium} 
                     onChangeText={v => setNewMatchData({...newMatchData, alternativeStadium: v})} 
                   />
@@ -887,7 +941,7 @@ export default function AdminScreens() {
                   </TouchableOpacity>
                 </ScrollView>
               )}
-            </View>
+            </KeyboardAvoidingView>
           </View>
         </Modal>
       </ScrollView>
