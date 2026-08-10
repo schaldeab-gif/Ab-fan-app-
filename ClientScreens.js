@@ -24,7 +24,10 @@ export default function ClientScreens() {
 
   const [selectedSong, setSelectedSong] = useState(null);
   const [showSongForm, setShowSongForm] = useState(false);
+  
   const [selectedAwayInfo, setSelectedAwayInfo] = useState(null);
+  const [editingClientAwayInfo, setEditingClientAwayInfo] = useState(null);
+  const [editClientAwayText, setEditClientAwayText] = useState('');
 
   const [newSongTitle, setNewSongTitle] = useState('');
   const [newSongLyrics, setNewSongLyrics] = useState('');
@@ -99,6 +102,19 @@ export default function ClientScreens() {
   const pendingSongsCount = ctx.pendingSongs?.length || 0;
   const adminNotificationsCount = pendingSongsCount + pendingResultsCount;
 
+  // SIKKER OPDATERING AF "SIDST SET" LOGIK. Ligger nu i toppen, så React ikke crasher appen.
+  useEffect(() => {
+    if (user) {
+      if (currentScreen === 'tipspil') {
+        db.collection('users').doc(user.uid).update({ lastSeenTipspil: Date.now() }).catch(()=>{});
+      } else if (currentScreen === 'forum') {
+        db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+      } else if (currentScreen === 'awayInfo') {
+        db.collection('users').doc(user.uid).update({ lastSeenAway: Date.now() }).catch(()=>{});
+      }
+    }
+  }, [currentScreen, user]);
+
   // Live match tjek (110 minutter efter kampstart)
   const isMatchLive = (matchDateStr) => {
     if (!matchDateStr) return false;
@@ -114,7 +130,7 @@ export default function ClientScreens() {
     return foundUser?.photoURL || defaultPhoto || 'https://via.placeholder.com/150';
   };
 
-  // Notifikationer logik med øjeblikkelig optimstisk opdatering af state, så de forsvinder med det samme
+  // Notifikationer logik med øjeblikkelig optimstisk opdatering
   const getNotifications = () => {
     if (!user) return [];
     const prefs = userData?.notifPreferences || { news: true, away: true, tipspil: true, forum: true };
@@ -143,19 +159,26 @@ export default function ClientScreens() {
     }
 
     if (prefs.away && canViewAwayInfo && awayInfoList.length > 0) {
-      const seenAway = userData?.seenAwayIds || [];
-      const unreadAway = awayInfoList.filter(a => !seenAway.includes(a.id));
+      const lastSeenAway = userData?.lastSeenAway || 0;
+      const unreadAway = awayInfoList.filter(a => {
+         const itemTime = a.updatedAt || (a.createdAt?.toMillis ? a.createdAt.toMillis() : 0);
+         return itemTime > lastSeenAway;
+      });
+      
       if (unreadAway.length > 0) {
         const target = unreadAway[0];
+        // Tjek om det er en opdatering (hvis updatedAt eksisterer og er nyere end createdAt)
+        const isUpdate = target.updatedAt && target.createdAt && target.updatedAt > target.createdAt.toMillis() + 5000;
+        
         notifs.push({
-          id: 'away_' + target.id,
-          text: `🚌 Ny away info: (${getTeamDisplayName(target.opponent || target.matchDetails?.homeTeam) || 'Udebane'})`,
+          id: 'away_' + target.id + '_' + (target.updatedAt || 'new'),
+          text: `🚌 ${isUpdate ? 'Opdateret' : 'Ny'} away info: (${getTeamDisplayName(target.opponent || target.matchDetails?.homeTeam) || 'Udebane'})`,
           onPress: () => {
             setShowNotifDropdown(false);
-            const updatedSeenAway = [...seenAway, target.id];
-            setUserData(prev => ({ ...prev, seenAwayIds: updatedSeenAway }));
+            const nowTime = Date.now();
+            setUserData(prev => ({ ...prev, lastSeenAway: nowTime }));
             db.collection('users').doc(user.uid).set({
-              seenAwayIds: firebase.firestore.FieldValue.arrayUnion(target.id)
+              lastSeenAway: nowTime
             }, { merge: true }).catch(()=>{});
             setSelectedAwayInfo(target);
             setCurrentScreen('awayInfo');
@@ -266,19 +289,6 @@ export default function ClientScreens() {
     const unsub = db.collection('forum_threads').doc(selectedThread.id).collection('replies').orderBy('createdAt', 'asc').onSnapshot((snap) => setThreadReplies(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     return unsub;
   }, [selectedThread]);
-
-  // SIKKER OPDATERING AF "SIDST SET" LOGIK. Udføres sikkert i top-level, så React ikke crasher.
-  useEffect(() => {
-    if (user) {
-      if (currentScreen === 'tipspil') {
-        db.collection('users').doc(user.uid).update({ lastSeenTipspil: Date.now() }).catch(()=>{});
-      } else if (currentScreen === 'forum') {
-        db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-      } else if (currentScreen === 'awayInfo') {
-        db.collection('users').doc(user.uid).update({ lastSeenAway: Date.now() }).catch(()=>{});
-      }
-    }
-  }, [currentScreen, user]);
 
   const handlePickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5 });
@@ -1018,17 +1028,55 @@ export default function ClientScreens() {
     if (selectedAwayInfo) {
        const m = selectedAwayInfo.matchDetails || matchesList.find(x => x.id === selectedAwayInfo.matchId || x.homeTeam === selectedAwayInfo.opponent) || { homeTeam: selectedAwayInfo.opponent || 'Udebane', matchDate: new Date() };
        return (
-         <View style={{flex: 1}}>
+         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{flex: 1}}>
             <TopBarMenu />
             <ScrollView contentContainerStyle={styles.detailContainer}>
-              <TouchableOpacity onPress={() => setSelectedAwayInfo(null)} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE TIL LISTEN</Text></TouchableOpacity>
+              <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10}}>
+                <TouchableOpacity onPress={() => { setSelectedAwayInfo(null); setEditingClientAwayInfo(null); }} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE TIL LISTEN</Text></TouchableOpacity>
+                {isAdmin || isEditor ? (
+                    <TouchableOpacity onPress={() => {
+                        if (editingClientAwayInfo) {
+                            setEditingClientAwayInfo(null);
+                        } else {
+                            setEditingClientAwayInfo(selectedAwayInfo);
+                            setEditClientAwayText(selectedAwayInfo.infoText);
+                        }
+                    }} style={{backgroundColor: '#12352A', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4}}>
+                        <Text style={{color: '#C5A059', fontSize: 11, fontWeight: 'bold'}}>✏️ {editingClientAwayInfo ? 'ANNULLER REDIGERING' : 'REDIGER INFO'}</Text>
+                    </TouchableOpacity>
+                ) : null}
+              </View>
+
               <View style={styles.detailCard}>
                  <Text style={{fontSize: 12, fontWeight: 'bold', color: '#C5A059', textAlign: 'center', marginBottom: 5}}>{formatDanishDate(m?.matchDate)}</Text>
                  <Text style={{fontSize: 22, fontWeight: '900', color: '#12352A', textAlign: 'center', marginBottom: 15}}>{m ? `${getTeamDisplayName(m.homeTeam)} vs AB` : (selectedAwayInfo.opponent ? `${getTeamDisplayName(selectedAwayInfo.opponent)} vs AB` : 'Udebane')}</Text>
-                 <Text style={{fontSize: 16, color: '#333', lineHeight: 26}}>{selectedAwayInfo.infoText}</Text>
+                 
+                 {editingClientAwayInfo ? (
+                     <View>
+                        <TextInput 
+                          style={[styles.inputField, {height: 150, textAlignVertical: 'top'}]} 
+                          multiline 
+                          value={editClientAwayText} 
+                          onChangeText={setEditClientAwayText} 
+                        />
+                        <TouchableOpacity style={styles.primaryButton} onPress={async () => {
+                            if (!editClientAwayText.trim()) return showAlert("Fejl", "Teksten kan ikke være tom.");
+                            await db.collection('away_info').doc(selectedAwayInfo.id).update({
+                                infoText: editClientAwayText,
+                                updatedAt: Date.now()
+                            });
+                            // Opdater lokalt så vi ser det med det samme
+                            setSelectedAwayInfo({...selectedAwayInfo, infoText: editClientAwayText, updatedAt: Date.now()});
+                            setEditingClientAwayInfo(null);
+                            showAlert("Succes", "Away Info opdateret!");
+                        }}><Text style={styles.primaryButtonText}>GEM ÆNDRINGER</Text></TouchableOpacity>
+                     </View>
+                 ) : (
+                    <Text style={{fontSize: 16, color: '#333', lineHeight: 26}}>{selectedAwayInfo.infoText}</Text>
+                 )}
               </View>
             </ScrollView>
-         </View>
+         </KeyboardAvoidingView>
        )
     }
 
