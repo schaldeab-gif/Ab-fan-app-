@@ -229,19 +229,20 @@ export default function AdminScreens() {
 
   const normalizeRoundName = (roundStr) => {
     if (!roundStr) return '';
+    // FIX: Rør ikke ved navnet, hvis det er en pokalkamp! Så ender den ikke i f.eks. "1. Runde".
+    if (roundStr.toLowerCase().includes('pokal')) return roundStr;
+
     const num = roundStr.replace(/\D/g, '');
     if (!num) return roundStr;
     return `${num}. Runde`;
   };
 
-  // 100% robust fallback til at finde hjemmebane, uanset om dataen er overskrevet af customTeams.
   const getStadiumForTeam = (teamName) => {
     if (!teamName) return '';
     const name = teamName.trim();
     let stad = customTeams[name]?.stadium;
     if (!stad || stad.trim() === '') stad = INITIAL_TEAM_DB[name]?.stadium;
     
-    // Hardcoded safety net if customTeams completely overwrote the record empty
     if (!stad || stad.trim() === '') {
       const lower = name.toLowerCase();
       if (lower.includes('aab') || lower.includes('aalborg')) return 'Aalborg Portland Park';
@@ -399,12 +400,30 @@ export default function AdminScreens() {
 
   if (currentScreen === 'adminMatches') {
     const leagues = [...new Set(Object.keys(TEAM_DB).map(t => TEAM_DB[t].league || '1. Division'))].sort();
-    const adminMatchesByRound = matchesList.reduce((acc, match) => { const round = normalizeRoundName(match.round) || 'Ukendt'; if (!acc[round]) acc[round] = []; acc[round].push(match); return acc; }, {});
+    
+    // Her samler vi alle kampe, som har samme runde, ind i grupper.
+    const adminMatchesByRound = matchesList.reduce((acc, match) => { 
+      const round = normalizeRoundName(match.round) || 'Ukendt'; 
+      if (!acc[round]) acc[round] = []; 
+      acc[round].push(match); 
+      return acc; 
+    }, {});
+    
+    // FIX: Ny smart sorteringsmekanisme der sørger for at Pokalkampe ikke roder rundt, 
+    // men lægger sig pænt under f.eks. "1. Runde" -> "Pokalrunde 1".
     const sortedAdminRounds = Object.keys(adminMatchesByRound).sort((a, b) => {
-      const numA = parseInt(a, 10) || 0;
-      const numB = parseInt(b, 10) || 0;
+      const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
+      const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
+
+      if (numA === numB) {
+        const isPokalA = a.toLowerCase().includes('pokal');
+        const isPokalB = b.toLowerCase().includes('pokal');
+        if (isPokalA && !isPokalB) return 1;
+        if (!isPokalA && isPokalB) return -1;
+      }
       return numA - numB;
     });
+
     const hasMissingResults = (matchesInRound) => { const now = new Date().getTime(); return matchesInRound.some(match => !match.matchDate ? false : new Date(match.matchDate.replace(' ', 'T')).getTime() < now && match.finalScore === false); };
 
     const handleRunMatchSync = async () => {
