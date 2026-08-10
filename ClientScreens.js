@@ -45,24 +45,20 @@ export default function ClientScreens() {
   const [hideFractions, setHideFractions] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
 
-  // Helper til at hente holdets valgte visningsnavn
   const getTeamDisplayName = (teamName) => {
     if (!teamName) return '';
     const TEAM_DB = { ...INITIAL_TEAM_DB, ...customTeams };
     return TEAM_DB[teamName]?.displayName || TEAM_DB[teamName]?.name || teamName;
   };
 
-  // Notifikationsindstillinger state
   const [notifNews, setNotifNews] = useState(userData?.notifPreferences?.news ?? true);
   const [notifAway, setNotifAway] = useState(userData?.notifPreferences?.away ?? true);
   const [notifTipspil, setNotifTipspil] = useState(userData?.notifPreferences?.tipspil ?? true);
   const [notifForum, setNotifForum] = useState(userData?.notifPreferences?.forum ?? true);
 
-  // Notifikationsbar rotation og dropdown state
   const [currentNotifIndex, setCurrentNotifIndex] = useState(0);
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
 
-  // Animationer for pulserende LIVE tekst og smooth notifikations-fade
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const notifAnim = useRef(new Animated.Value(1)).current;
 
@@ -83,7 +79,6 @@ export default function ClientScreens() {
   const [isLoadingGuesses, setIsLoadingGuesses] = useState(false);
   const [showAdvancedLb, setShowAdvancedLb] = useState(false);
 
-  // Computed data
   const isSuperAdmin = (user && user.email === 'schaldeab@gmail.com') || (userData && userData.role === 'Super Admin');
   const isAdmin = isSuperAdmin || (userData && userData.role === 'Admin');
   const isEditor = isAdmin || (userData && userData.role === 'Redaktør');
@@ -102,7 +97,6 @@ export default function ClientScreens() {
   const pendingSongsCount = ctx.pendingSongs?.length || 0;
   const adminNotificationsCount = pendingSongsCount + pendingResultsCount;
 
-  // SIKKER OPDATERING AF "SIDST SET" LOGIK. Ligger nu i toppen, så React ikke crasher appen.
   useEffect(() => {
     if (user) {
       if (currentScreen === 'tipspil') {
@@ -115,7 +109,6 @@ export default function ClientScreens() {
     }
   }, [currentScreen, user]);
 
-  // Live match tjek (110 minutter efter kampstart)
   const isMatchLive = (matchDateStr) => {
     if (!matchDateStr) return false;
     const start = new Date(matchDateStr.replace(' ', 'T')).getTime();
@@ -124,13 +117,11 @@ export default function ClientScreens() {
     return now >= start && now <= end;
   };
 
-  // Live avatar hjælperfunktion
   const getLiveAuthorPhoto = (authorId, defaultPhoto) => {
     const foundUser = usersList.find(u => u.id === authorId);
     return foundUser?.photoURL || defaultPhoto || 'https://via.placeholder.com/150';
   };
 
-  // Notifikationer logik med øjeblikkelig optimstisk opdatering
   const getNotifications = () => {
     if (!user) return [];
     const prefs = userData?.notifPreferences || { news: true, away: true, tipspil: true, forum: true };
@@ -167,7 +158,6 @@ export default function ClientScreens() {
       
       if (unreadAway.length > 0) {
         const target = unreadAway[0];
-        // Tjek om det er en opdatering (hvis updatedAt eksisterer og er nyere end createdAt)
         const isUpdate = target.updatedAt && target.createdAt && target.updatedAt > target.createdAt.toMillis() + 5000;
         
         notifs.push({
@@ -649,49 +639,56 @@ export default function ClientScreens() {
                       )}
                     </View>
 
-                    {m.finalScore ? (
-                      <View style={{alignItems: 'center', marginVertical: 8, backgroundColor: '#F7F7F2', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: '#E5E5DF'}}>
-                        <Text style={{fontSize: 10, fontWeight: 'bold', color: '#666', textTransform: 'uppercase', marginBottom: 2}}>Endeligt Resultat</Text>
-                        <Text style={{fontSize: 22, fontWeight: '900', color: '#12352A', marginBottom: 6}}>{m.homeScore} - {m.awayScore}</Text>
-                        
-                        {(() => {
-                          const userPred = ctx.userPredictions[m.id] || { home: '', away: '' };
-                          const pH = userPred.home !== '' ? parseInt(userPred.home, 10) : null;
-                          const pA = userPred.away !== '' ? parseInt(userPred.away, 10) : null;
+                    <View style={styles.matchTeamsRow}>
+                      <ImageBackground source={{ uri: getTeamLogo(m.homeTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: hStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{getTeamDisplayName(m.homeTeam)}</Text></ImageBackground>
+                      
+                      {m.finalScore ? (
+                        <View style={{alignItems: 'center', paddingHorizontal: 10}}>
+                          <Text style={{fontSize: 22, fontWeight: '900', color: '#12352A'}}>{m.homeScore} - {m.awayScore}</Text>
+                        </View>
+                      ) : (
+                        <>
+                          <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.home || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], home: val}})} />
+                          <Text style={{fontWeight: 'bold', marginHorizontal: 4, color: locked ? '#888' : '#111'}}>-</Text>
+                          <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.away || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], away: val}})} />
+                        </>
+                      )}
 
-                          let bgCol = '#E30613';
-                          let txtDesc = 'Forkert (0 p)';
-                          if (pH !== null && pA !== null) {
-                            const isExact = pH === m.homeScore && pA === m.awayScore;
-                            const isSign = !isExact && ((pH > pA && m.homeScore > m.awayScore) || (pH < pA && m.homeScore < m.awayScore) || (pH === pA && m.homeScore === m.awayScore));
-                            if (isExact) {
-                              bgCol = '#12352A';
-                              txtDesc = 'Præcist gæt! (3 pts)';
-                            } else if (isSign) {
-                              bgCol = '#4CAF50';
-                              txtDesc = 'Rigtig 1X2! (1 pt)';
+                      <ImageBackground source={{ uri: getTeamLogo(m.awayTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: aStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{getTeamDisplayName(m.awayTeam)}</Text></ImageBackground>
+                    </View>
+
+                    {m.finalScore && (
+                       <View style={{marginTop: 10}}>
+                         {(() => {
+                            const userPred = ctx.userPredictions[m.id] || { home: '', away: '' };
+                            const pH = userPred.home !== '' ? parseInt(userPred.home, 10) : null;
+                            const pA = userPred.away !== '' ? parseInt(userPred.away, 10) : null;
+
+                            let bgCol = '#E30613';
+                            let txtDesc = 'Forkert (0 p)';
+                            if (pH !== null && pA !== null) {
+                              const isExact = pH === m.homeScore && pA === m.awayScore;
+                              const isSign = !isExact && ((pH > pA && m.homeScore > m.awayScore) || (pH < pA && m.homeScore < m.awayScore) || (pH === pA && m.homeScore === m.awayScore));
+                              if (isExact) {
+                                bgCol = '#12352A';
+                                txtDesc = 'Præcist gæt! (3 pts)';
+                              } else if (isSign) {
+                                bgCol = '#4CAF50';
+                                txtDesc = 'Rigtig 1X2! (1 pt)';
+                              }
+                            } else {
+                              txtDesc = 'Ingen gæt afgivet';
                             }
-                          } else {
-                            txtDesc = 'Ingen gæt afgivet';
-                          }
 
-                          return (
-                            <View style={{backgroundColor: bgCol, width: '100%', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, alignItems: 'center'}}>
-                              <Text style={{color: '#fff', fontSize: 11, fontWeight: 'bold'}}>
-                                Dit gæt: {userPred.home !== '' ? userPred.home : '-'} - {userPred.away !== '' ? userPred.away : '-'} ({txtDesc})
-                              </Text>
-                            </View>
-                          );
-                        })()}
-                      </View>
-                    ) : (
-                      <View style={styles.matchTeamsRow}>
-                        <ImageBackground source={{ uri: getTeamLogo(m.homeTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: hStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{getTeamDisplayName(m.homeTeam)}</Text></ImageBackground>
-                        <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.home || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], home: val}})} />
-                        <Text style={{fontWeight: 'bold', marginHorizontal: 4, color: locked ? '#888' : '#111'}}>-</Text>
-                        <TextInput editable={!locked} style={[styles.scoreInput, locked && {backgroundColor: '#e0e0e0', color: '#888', borderColor: '#ccc'}]} keyboardType="numeric" maxLength={2} placeholder="-" value={ctx.userPredictions[m.id]?.away || ''} onChangeText={(val) => ctx.setUserPredictions({...ctx.userPredictions, [m.id]: {...ctx.userPredictions[m.id], away: val}})} />
-                        <ImageBackground source={{ uri: getTeamLogo(m.awayTeam) }} style={[styles.teamBadgeWithLogo, {backgroundColor: aStyle.backgroundColor}, locked && {opacity: 0.5}]} imageStyle={{ opacity: 0.3, blurRadius: 2 }} resizeMode="cover"><View style={styles.darkOverlay} /><Text style={[styles.teamBadgeText, {color: '#FFFFFF'}]} numberOfLines={1}>{getTeamDisplayName(m.awayTeam)}</Text></ImageBackground>
-                      </View>
+                            return (
+                              <View style={{backgroundColor: bgCol, width: '100%', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 6, alignItems: 'center'}}>
+                                <Text style={{color: '#fff', fontSize: 11, fontWeight: 'bold'}}>
+                                  Dit gæt: {userPred.home !== '' ? userPred.home : '-'} - {userPred.away !== '' ? userPred.away : '-'} ({txtDesc})
+                                </Text>
+                              </View>
+                            );
+                         })()}
+                       </View>
                     )}
                   </TouchableOpacity>
                 );
@@ -1065,7 +1062,6 @@ export default function ClientScreens() {
                                 infoText: editClientAwayText,
                                 updatedAt: Date.now()
                             });
-                            // Opdater lokalt så vi ser det med det samme
                             setSelectedAwayInfo({...selectedAwayInfo, infoText: editClientAwayText, updatedAt: Date.now()});
                             setEditingClientAwayInfo(null);
                             showAlert("Succes", "Away Info opdateret!");
