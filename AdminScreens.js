@@ -5,6 +5,7 @@ import firebase from 'firebase';
 import { db, auth, storage } from './FirebaseConfig';
 import { styles } from './styles';
 import { INITIAL_TEAM_DB } from './teamDatabase';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 
 // Officiel master-tidsplan fra bold.dk (Runde 1 til 22) med standardiserede holdnavne
@@ -213,12 +214,14 @@ export default function AdminScreens() {
   const [newMatchData, setNewMatchData] = useState({ 
     homeTeam: 'AB Gladsaxe', 
     awayTeam: 'AaB', 
-    dateStr: '2026-07-24', 
-    timeStr: '18:00', 
-    round: '1. Runde', 
+    date: new Date(), 
+    round: '', 
     tournament: '1. Division', 
     alternativeStadium: '' 
   });
+  
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   
   const [expandedAdminRounds, setExpandedAdminRounds] = useState({});
   const toggleAdminRound = (roundName) => setExpandedAdminRounds(prev => ({ ...prev, [roundName]: !prev[roundName] }));
@@ -463,13 +466,14 @@ export default function AdminScreens() {
               title: `${official.round}: Manglende kamp (${official.homeTeam} vs ${official.awayTeam})`,
               description: `Findes i det officielle program for ${official.round}, men mangler i appen.`,
               action: async () => {
+                const defaultStad = TEAM_DB[official.homeTeam]?.stadium || null;
                 await db.collection('matches').add({
                   homeTeam: official.homeTeam,
                   awayTeam: official.awayTeam,
                   matchDate: official.matchDate,
                   round: official.round,
                   tournament: official.tournament,
-                  alternativeStadium: null,
+                  alternativeStadium: defaultStad,
                   finalScore: official.finalScore,
                   homeScore: official.homeScore,
                   awayScore: official.awayScore,
@@ -550,6 +554,26 @@ export default function AdminScreens() {
           </View>
         )}
 
+        {/* Knap til auto-udfyld af stadioner for alle eksisterende kampe */}
+        <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 12, borderRadius: 8, marginBottom: 15}]} onPress={async () => {
+          try {
+            let count = 0;
+            for (let m of matchesList) {
+              const stad = TEAM_DB[m.homeTeam]?.stadium;
+              if (stad && !m.alternativeStadium) {
+                await db.collection('matches').doc(m.id).update({ alternativeStadium: stad });
+                count++;
+              }
+            }
+            showAlert("Succes", `Auto-udfyldte stadion for ${count} kampe!`);
+            logActivity('kampe', `Auto-udfyldte stadion for ${count} kampe`, userData?.username || 'Admin');
+          } catch (e) {
+            showAlert("Fejl", e.message);
+          }
+        }}>
+          <Text style={{color: '#C5A059', fontWeight: 'bold', textAlign: 'center'}}>🏟️ AUTO-UDFYLD STANDARD STADION FOR ALLE KAMPE</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={[styles.primaryButton, {backgroundColor: '#C5A059', marginBottom: 20}]} onPress={async () => {
           setIsCalculatingPoints(true);
           try {
@@ -582,8 +606,8 @@ export default function AdminScreens() {
 
         <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 12, borderRadius: 8, marginBottom: 15}]} onPress={() => { 
           setEditingMatchId(null); 
-          const defaultStadium = TEAM_DB['AB Gladsaxe']?.stadium || '';
-          setNewMatchData({ homeTeam: 'AB Gladsaxe', awayTeam: 'AaB', dateStr: '2026-07-24', timeStr: '18:00', round: 'Pokalrunde 2', tournament: '1. Division', alternativeStadium: defaultStadium }); 
+          const defaultStad = TEAM_DB['AB Gladsaxe']?.stadium || '';
+          setNewMatchData({ homeTeam: 'AB Gladsaxe', awayTeam: 'AaB', date: new Date(), round: '', tournament: '1. Division', alternativeStadium: defaultStad }); 
           setShowAddMatchModal(true); 
         }}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>➕ TILFØJ NY KAMP MANUELT</Text></TouchableOpacity>
 
@@ -603,16 +627,15 @@ export default function AdminScreens() {
                         <Text style={{fontWeight: 'bold', color: '#12352A', flex: 1}}>{m.round} ({m.tournament || '1. Division'}): {m.homeTeam} vs {m.awayTeam}</Text>
                         <TouchableOpacity onPress={() => { 
                           setEditingMatchId(m.id); 
-                          const parts = m.matchDate ? m.matchDate.split(' ') : ['2026-07-24', '18:00'];
-                          const defaultStadium = m.alternativeStadium || TEAM_DB[m.homeTeam]?.stadium || '';
+                          const matchDateObj = m.matchDate ? new Date(m.matchDate.replace(' ', 'T')) : new Date();
+                          const defaultStad = m.alternativeStadium || TEAM_DB[m.homeTeam]?.stadium || '';
                           setNewMatchData({ 
                             homeTeam: m.homeTeam, 
                             awayTeam: m.awayTeam, 
-                            dateStr: parts[0] || '2026-07-24', 
-                            timeStr: parts[1] || '18:00', 
+                            date: isNaN(matchDateObj.getTime()) ? new Date() : matchDateObj, 
                             round: m.round, 
                             tournament: m.tournament || '1. Division', 
-                            alternativeStadium: defaultStadium 
+                            alternativeStadium: defaultStad 
                           }); 
                           setShowAddMatchModal(true); 
                         }}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>✏️ RET INFO</Text></TouchableOpacity>
@@ -636,6 +659,7 @@ export default function AdminScreens() {
           );
         })}
 
+        {/* Modal med kategoriserede knapper og rundennavne */}
         <Modal visible={showSyncReviewModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContainer, {maxHeight: '90%'}]}>
@@ -724,12 +748,8 @@ export default function AdminScreens() {
                         {Object.keys(TEAM_DB).filter(t => (TEAM_DB[t].league || '1. Division') === league).sort().map(team => (
                           <TouchableOpacity key={team} style={{padding: 15, borderBottomWidth: 1, borderColor: '#eee'}} onPress={() => { 
                             if(newMatchTeamSelector.type === 'home') {
-                              const defaultStad = TEAM_DB[team]?.stadium || '';
-                              setNewMatchData({
-                                ...newMatchData, 
-                                homeTeam: team, 
-                                alternativeStadium: newMatchData.alternativeStadium ? newMatchData.alternativeStadium : defaultStad
-                              });
+                              const defaultStad = TEAM_DB[team]?.stadium || newMatchData.alternativeStadium;
+                              setNewMatchData({...newMatchData, homeTeam: team, alternativeStadium: defaultStad});
                             } else {
                               setNewMatchData({...newMatchData, awayTeam: team});
                             }
@@ -753,22 +773,48 @@ export default function AdminScreens() {
                   
                   <View style={{flexDirection: 'row', gap: 10}}>
                     <View style={{flex: 1}}>
-                      <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Dato (ÅÅÅÅ-MM-DD)</Text>
-                      <TextInput 
-                        style={styles.inputField} 
-                        placeholder="2026-07-24" 
-                        value={newMatchData.dateStr} 
-                        onChangeText={v => setNewMatchData({...newMatchData, dateStr: v})} 
-                      />
+                      <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Dato</Text>
+                      <TouchableOpacity style={styles.inputField} onPress={() => setShowDatePicker(true)}>
+                        <Text>{newMatchData.date.toLocaleDateString('da-DK', {day: '2-digit', month: '2-digit', year: 'numeric'}).replace(/\//g, '.')}</Text>
+                      </TouchableOpacity>
+                      {showDatePicker && (
+                        <DateTimePicker 
+                          value={newMatchData.date} 
+                          mode="date" 
+                          display="default" 
+                          onChange={(e, d) => { 
+                            setShowDatePicker(Platform.OS === 'ios'); 
+                            if (d) { 
+                              const c = newMatchData.date; 
+                              d.setHours(c.getHours()); 
+                              d.setMinutes(c.getMinutes()); 
+                              setNewMatchData({...newMatchData, date: d}); 
+                            } 
+                          }} 
+                        />
+                      )}
                     </View>
                     <View style={{flex: 1}}>
-                      <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Tid (TT:MM)</Text>
-                      <TextInput 
-                        style={styles.inputField} 
-                        placeholder="18:00" 
-                        value={newMatchData.timeStr} 
-                        onChangeText={v => setNewMatchData({...newMatchData, timeStr: v})} 
-                      />
+                      <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Tid</Text>
+                      <TouchableOpacity style={styles.inputField} onPress={() => setShowTimePicker(true)}>
+                        <Text>{newMatchData.date.toLocaleTimeString('da-DK', {hour: '2-digit', minute:'2-digit'})}</Text>
+                      </TouchableOpacity>
+                      {showTimePicker && (
+                        <DateTimePicker 
+                          value={newMatchData.date} 
+                          mode="time" 
+                          display="default" 
+                          onChange={(e, d) => { 
+                            setShowTimePicker(Platform.OS === 'ios'); 
+                            if (d) { 
+                              const n = new Date(newMatchData.date); 
+                              n.setHours(d.getHours()); 
+                              n.setMinutes(d.getMinutes()); 
+                              setNewMatchData({...newMatchData, date: n}); 
+                            } 
+                          }} 
+                        />
+                      )}
                     </View>
                   </View>
 
@@ -798,7 +844,12 @@ export default function AdminScreens() {
 
                   <TouchableOpacity style={[styles.primaryButton, {width: '100%', marginBottom: 10, marginTop: 10}]} onPress={async () => {
                     if(!newMatchData.homeTeam || !newMatchData.awayTeam || !newMatchData.round) return showAlert("Fejl", "Udfyld alle felter!");
-                    const finalDate = `${newMatchData.dateStr.trim()} ${newMatchData.timeStr.trim()}`;
+                    const y = newMatchData.date.getFullYear(); 
+                    const m = String(newMatchData.date.getMonth() + 1).padStart(2, '0'); 
+                    const day = String(newMatchData.date.getDate()).padStart(2, '0'); 
+                    const h = String(newMatchData.date.getHours()).padStart(2, '0'); 
+                    const min = String(newMatchData.date.getMinutes()).padStart(2, '0');
+                    const finalDate = `${y}-${m}-${day} ${h}:${min}`;
                     
                     if(editingMatchId) { 
                       await db.collection('matches').doc(editingMatchId).update({ 
