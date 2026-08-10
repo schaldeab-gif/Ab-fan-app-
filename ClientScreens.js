@@ -1,5 +1,5 @@
 import React, { useState, useContext, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, KeyboardAvoidingView, Platform, Modal, ImageBackground, Linking, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Image, TextInput, KeyboardAvoidingView, Platform, Modal, ImageBackground, Linking, Animated, Alert } from 'react-native';
 import { AppContext } from './AppContext';
 import firebase from 'firebase';
 import { db, auth, storage } from './FirebaseConfig';
@@ -266,6 +266,19 @@ export default function ClientScreens() {
     const unsub = db.collection('forum_threads').doc(selectedThread.id).collection('replies').orderBy('createdAt', 'asc').onSnapshot((snap) => setThreadReplies(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))));
     return unsub;
   }, [selectedThread]);
+
+  // SIKKER OPDATERING AF "SIDST SET" LOGIK. Udføres sikkert i top-level, så React ikke crasher.
+  useEffect(() => {
+    if (user) {
+      if (currentScreen === 'tipspil') {
+        db.collection('users').doc(user.uid).update({ lastSeenTipspil: Date.now() }).catch(()=>{});
+      } else if (currentScreen === 'forum') {
+        db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
+      } else if (currentScreen === 'awayInfo') {
+        db.collection('users').doc(user.uid).update({ lastSeenAway: Date.now() }).catch(()=>{});
+      }
+    }
+  }, [currentScreen, user]);
 
   const handlePickImage = async () => {
     let result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, aspect: [1, 1], quality: 0.5 });
@@ -551,12 +564,6 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'tipspil') {
-    useEffect(() => {
-      if (user) {
-        db.collection('users').doc(user.uid).update({ lastSeenTipspil: Date.now() }).catch(()=>{});
-      }
-    }, []);
-
     const uniqueRounds = [...new Set(matchesList.map(m => m.round))];
     if (uniqueRounds.length > 0 && !uniqueRounds.includes(selectedRound)) setSelectedRound(uniqueRounds[0]);
 
@@ -763,12 +770,6 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'forum') {
-    useEffect(() => {
-      if (user) {
-        db.collection('users').doc(user.uid).update({ lastSeenForum: firebase.firestore.FieldValue.serverTimestamp() }).catch(()=>{});
-      }
-    }, []);
-
     if (selectedThread) {
       const threadLivePhoto = getLiveAuthorPhoto(selectedThread.authorId, selectedThread.authorPhoto);
       return (
@@ -998,12 +999,6 @@ export default function ClientScreens() {
   }
 
   if (currentScreen === 'awayInfo') {
-    useEffect(() => {
-      if (user) {
-        db.collection('users').doc(user.uid).update({ lastSeenAway: Date.now() }).catch(()=>{});
-      }
-    }, []);
-
     if (!canViewAwayInfo) {
       return (
         <View style={{flex: 1}}>
@@ -1107,7 +1102,7 @@ export default function ClientScreens() {
           })}
           {user ? (
             <View style={styles.commentInputContainer}>
-              <TextInput style={styles.commentInput} placeholder="Skriv en kommentar..." placeholderTextColor="#888" value={newNewsComment} onChangeText={newNewsComment} />
+              <TextInput style={styles.commentInput} placeholder="Skriv en kommentar..." placeholderTextColor="#888" value={newNewsComment} onChangeText={setNewNewsComment} />
               <TouchableOpacity style={styles.commentSendBtn} onPress={async () => { if (!newNewsComment.trim() || !selectedNews) return; await db.collection('news').doc(selectedNews.id).collection('comments').add({ content: newNewsComment, authorId: user.uid, authorName: userData?.username || 'Fan', authorPhoto: userData?.photoURL || '', authorRole: isSuperAdmin ? 'Super Admin' : (userData?.role || 'Alm. Bruger'), authorFractions: userData?.hideFractions ? [] : (userData?.fractions || []), authorSignature: userData?.signature || '', createdAt: firebase.firestore.FieldValue.serverTimestamp() }); setNewNewsComment(''); }}><Text style={{color: '#FFFFFF', fontWeight: 'bold'}}>SEND</Text></TouchableOpacity>
             </View>
           ) : <Text style={{color: '#666', fontStyle: 'italic', textAlign: 'center', marginVertical: 15}}>Log ind for at kommentere.</Text>}
