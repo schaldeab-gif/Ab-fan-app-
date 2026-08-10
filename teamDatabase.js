@@ -10,6 +10,7 @@ export const INITIAL_TEAM_DB = {
   'Randers FC': { league: 'Superliga', logo: 'https://via.placeholder.com/150', bgColor: '#66CCFF', color: '#000000', stadium: 'Cepheus Park Randers' },
   'Lyngby Boldklub': { league: 'Superliga', logo: 'https://via.placeholder.com/150', bgColor: '#0033A0', color: '#FFFFFF', stadium: 'Lyngby Stadion' },
   'AaB Fodbold': { league: 'Superliga', logo: 'https://www.worldsoccerpins.com/web/image/75447-6582cdf4/Aalborg%20BK.webp', bgColor: '#E30613', color: '#FFFFFF', stadium: 'Aalborg Portland Park' },
+  'AaB': { league: 'Superliga', logo: 'https://www.worldsoccerpins.com/web/image/75447-6582cdf4/Aalborg%20BK.webp', bgColor: '#E30613', color: '#FFFFFF', stadium: 'Aalborg Portland Park' }, // Tilføjet for at matche kampprogram
   'Sønderjyske': { league: 'Superliga', logo: 'https://via.placeholder.com/150', bgColor: '#ADD8E6', color: '#000000', stadium: 'Sydbank Park' },
   'Vejle Boldklub': { league: 'Superliga', logo: 'https://www.worldsoccerpins.com/web/image/75449-b81c84a9/Vejle%20BK.webp', bgColor: '#E20613', color: '#FFFFFF', stadium: 'Vejle Stadion' },
 
@@ -29,6 +30,7 @@ export const INITIAL_TEAM_DB = {
 
   // 2. Division
   'AB': { league: '2. Division', logo: 'https://www.worldsoccerpins.com/web/image/75448-70215e19/Akademisk%20Boldklub.webp', bgColor: '#12352A', color: '#FFFFFF', stadium: 'Gladsaxe Stadion' },
+  'AB Gladsaxe': { league: '2. Division', logo: 'https://www.worldsoccerpins.com/web/image/75448-70215e19/Akademisk%20Boldklub.webp', bgColor: '#12352A', color: '#FFFFFF', stadium: 'Gladsaxe Stadion' }, // Tilføjet for at matche kampprogram
   'Aarhus Fremad': { league: '2. Division', logo: 'https://www.worldsoccerpins.com/web/image/75446-594b4b0a/Aarhus%20Fremad.webp', bgColor: '#FFED00', color: '#111111', stadium: 'Riisvangen Stadion' },
   'BK Frem': { league: '2. Division', logo: 'https://via.placeholder.com/150', bgColor: '#E30613', color: '#000000', stadium: 'Valby Stadion' },
   'FC Helsingør': { league: '2. Division', logo: 'https://via.placeholder.com/150', bgColor: '#ADD8E6', color: '#FFFFFF', stadium: 'Helsingør Stadion' },
