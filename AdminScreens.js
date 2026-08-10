@@ -5,180 +5,136 @@ import firebase from 'firebase';
 import { db, auth, storage } from './FirebaseConfig';
 import { styles } from './styles';
 import { INITIAL_TEAM_DB } from './teamDatabase';
-import DateTimePicker from '@react-native-community/datetimepicker';
 import * as ImagePicker from 'expo-image-picker';
 
 // Officiel master-tidsplan fra bold.dk (Runde 1 til 22) med standardiserede holdnavne
 const OFFICIAL_MASTER_SCHEDULE = [
-  // 1. Runde
   { round: '1. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'AB Gladsaxe', matchDate: '2026-07-24 18:00', finalScore: true, homeScore: 2, awayScore: 2 },
   { round: '1. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'Hillerød Fodbold', matchDate: '2026-07-24 18:00', finalScore: true, homeScore: 1, awayScore: 0 },
   { round: '1. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'Vendsyssel FF', matchDate: '2026-07-25 14:00', finalScore: true, homeScore: 7, awayScore: 7 },
   { round: '1. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'Kolding IF', matchDate: '2026-07-25 14:00', finalScore: true, homeScore: 1, awayScore: 1 },
   { round: '1. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'HB Køge', matchDate: '2026-07-25 14:00', finalScore: true, homeScore: 3, awayScore: 0 },
   { round: '1. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'Aarhus Fremad', matchDate: '2026-07-26 14:00', finalScore: true, homeScore: 1, awayScore: 2 },
-
-  // 2. Runde
   { round: '2. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'AaB', matchDate: '2026-07-31 18:00', finalScore: true, homeScore: 1, awayScore: 2 },
   { round: '2. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'FC Fredericia', matchDate: '2026-07-31 18:00', finalScore: true, homeScore: 1, awayScore: 1 },
   { round: '2. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'Vejle Boldklub', matchDate: '2026-07-31 18:00', finalScore: true, homeScore: 0, awayScore: 2 },
   { round: '2. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'Esbjerg fB', matchDate: '2026-08-01 14:00', finalScore: true, homeScore: 2, awayScore: 3 },
   { round: '2. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'Hvidovre IF', matchDate: '2026-08-01 14:00', finalScore: true, homeScore: 0, awayScore: 1 },
   { round: '2. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'Hobro IK', matchDate: '2026-08-02 14:00', finalScore: true, homeScore: 1, awayScore: 2 },
-
-  // 3. Runde
   { round: '3. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'HB Køge', matchDate: '2026-08-08 18:00', finalScore: true, homeScore: 3, awayScore: 1 },
   { round: '3. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'AB Gladsaxe', matchDate: '2026-08-08 18:00', finalScore: true, homeScore: 1, awayScore: 0 },
   { round: '3. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'Esbjerg fB', matchDate: '2026-08-09 18:00', finalScore: true, homeScore: 2, awayScore: 1 },
   { round: '3. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'Hillerød Fodbold', matchDate: '2026-08-09 18:00', finalScore: true, homeScore: 5, awayScore: 4 },
   { round: '3. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'Kolding IF', matchDate: '2026-08-09 18:00', finalScore: true, homeScore: 1, awayScore: 1 },
   { round: '3. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'Vendsyssel FF', matchDate: '2026-08-09 18:00', finalScore: true, homeScore: 1, awayScore: 1 },
-
-  // 4. Runde
   { round: '4. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'Vejle Boldklub', matchDate: '2026-08-14 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '4. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'FC Fredericia', matchDate: '2026-08-14 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '4. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'Aarhus Fremad', matchDate: '2026-08-15 13:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '4. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'Hobro IK', matchDate: '2026-08-15 14:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '4. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'Hvidovre IF', matchDate: '2026-08-15 16:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '4. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'AB Gladsaxe', matchDate: '2026-08-16 14:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 5. Runde
   { round: '5. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'Hillerød Fodbold', matchDate: '2026-08-20 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '5. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'AaB', matchDate: '2026-08-21 18:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '5. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'Esbjerg fB', matchDate: '2026-08-21 18:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '5. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'Aarhus Fremad', matchDate: '2026-08-21 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '5. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'Hvidovre IF', matchDate: '2026-08-22 18:30', finalScore: false, homeScore: null, awayScore: null },
   { round: '5. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'Kolding IF', matchDate: '2026-08-23 13:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 6. Runde
   { round: '6. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'AB Gladsaxe', matchDate: '2026-08-28 13:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '6. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'HB Køge', matchDate: '2026-08-29 14:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '6. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'FC Fredericia', matchDate: '2026-08-30 13:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '6. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'Hobro IK', matchDate: '2026-08-30 13:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '6. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'Vejle Boldklub', matchDate: '2026-08-30 14:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '6. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'Vendsyssel FF', matchDate: '2026-08-30 15:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 7. Runde
   { round: '7. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'Hvidovre IF', matchDate: '2026-09-04 18:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '7. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'Vendsyssel FF', matchDate: '2026-09-04 18:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '7. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'Hillerød Fodbold', matchDate: '2026-09-04 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '7. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'AaB', matchDate: '2026-09-05 14:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '7. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'Esbjerg fB', matchDate: '2026-09-05 14:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '7. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'Kolding IF', matchDate: '2026-09-06 13:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 8. Runde
   { round: '8. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'Vejle Boldklub', matchDate: '2026-09-12 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '8. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'AaB', matchDate: '2026-09-12 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '8. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'FC Fredericia', matchDate: '2026-09-12 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '8. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'Aarhus Fremad', matchDate: '2026-09-12 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '8. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'HB Køge', matchDate: '2026-09-12 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '8. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'AB Gladsaxe', matchDate: '2026-09-12 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 9. Runde
   { round: '9. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'Vejle Boldklub', matchDate: '2026-09-19 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '9. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'Vendsyssel FF', matchDate: '2026-09-19 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '9. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'Hillerød Fodbold', matchDate: '2026-09-19 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '9. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'Hvidovre IF', matchDate: '2026-09-19 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '9. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'Esbjerg fB', matchDate: '2026-09-19 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '9. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'Hobro IK', matchDate: '2026-09-19 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 10. Runde
   { round: '10. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'Hvidovre IF', matchDate: '2026-10-03 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '10. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'AaB', matchDate: '2026-10-03 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '10. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'FC Fredericia', matchDate: '2026-10-03 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '10. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'HB Køge', matchDate: '2026-10-03 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '10. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'Aarhus Fremad', matchDate: '2026-10-03 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '10. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'Kolding IF', matchDate: '2026-10-03 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 11. Runde
   { round: '11. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'Hobro IK', matchDate: '2026-10-17 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '11. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'Vejle Boldklub', matchDate: '2026-10-17 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '11. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'Hillerød Fodbold', matchDate: '2026-10-17 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '11. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'Vendsyssel FF', matchDate: '2026-10-17 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '11. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'Esbjerg fB', matchDate: '2026-10-17 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '11. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'AB Gladsaxe', matchDate: '2026-10-17 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 12. Runde
   { round: '12. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'Vendsyssel FF', matchDate: '2026-10-24 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '12. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'HB Køge', matchDate: '2026-10-24 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '12. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'Aarhus Fremad', matchDate: '2026-10-24 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '12. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'FC Fredericia', matchDate: '2026-10-24 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '12. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'AaB', matchDate: '2026-10-24 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '12. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'Kolding IF', matchDate: '2026-10-24 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 13. Runde
   { round: '13. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'AB Gladsaxe', matchDate: '2026-10-31 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '13. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'Hvidovre IF', matchDate: '2026-10-31 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '13. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'Vejle Boldklub', matchDate: '2026-10-31 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '13. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'Hobro IK', matchDate: '2026-10-31 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '13. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'HB Køge', matchDate: '2026-10-31 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '13. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'Hillerød Fodbold', matchDate: '2026-10-31 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 14. Runde
   { round: '14. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'Esbjerg fB', matchDate: '2026-11-07 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '14. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'Aarhus Fremad', matchDate: '2026-11-07 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '14. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'FC Fredericia', matchDate: '2026-11-07 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '14. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'AaB', matchDate: '2026-11-07 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '14. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'Kolding IF', matchDate: '2026-11-07 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '14. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'Vendsyssel FF', matchDate: '2026-11-07 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 15. Runde
   { round: '15. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'Hillerød Fodbold', matchDate: '2026-11-21 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '15. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'AaB', matchDate: '2026-11-21 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '15. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'Hobro IK', matchDate: '2026-11-21 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '15. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'HB Køge', matchDate: '2026-11-21 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '15. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'AB Gladsaxe', matchDate: '2026-11-21 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '15. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'Hvidovre IF', matchDate: '2026-11-21 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 16. Runde
   { round: '16. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'Vejle Boldklub', matchDate: '2026-11-28 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '16. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'Esbjerg fB', matchDate: '2026-11-28 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '16. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'FC Fredericia', matchDate: '2026-11-28 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '16. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'Kolding IF', matchDate: '2026-11-28 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '16. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'Aarhus Fremad', matchDate: '2026-11-28 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '16. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'Vendsyssel FF', matchDate: '2026-11-28 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 17. Runde
   { round: '17. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'Hvidovre IF', matchDate: '2026-12-05 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '17. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'AaB', matchDate: '2026-12-05 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '17. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'Esbjerg fB', matchDate: '2026-12-05 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '17. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'AB Gladsaxe', matchDate: '2026-12-05 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '17. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'Hobro IK', matchDate: '2026-12-05 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '17. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'HB Køge', matchDate: '2026-12-05 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 18. Runde
   { round: '18. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'Kolding IF', matchDate: '2027-02-20 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '18. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'AB Gladsaxe', matchDate: '2027-02-20 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '18. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'Hillerød Fodbold', matchDate: '2027-02-20 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '18. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'Vejle Boldklub', matchDate: '2027-02-20 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '18. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'Aarhus Fremad', matchDate: '2027-02-20 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '18. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'Vendsyssel FF', matchDate: '2027-02-20 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 19. Runde
   { round: '19. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'Hobro IK', matchDate: '2027-02-27 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '19. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'FC Fredericia', matchDate: '2027-02-27 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '19. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'AaB', matchDate: '2027-02-27 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '19. Runde', tournament: '1. Division', homeTeam: 'Hillerød Fodbold', awayTeam: 'Hvidovre IF', matchDate: '2027-02-27 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '19. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'Esbjerg fB', matchDate: '2027-02-27 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '19. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'HB Køge', matchDate: '2027-02-27 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 20. Runde
   { round: '20. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'Aarhus Fremad', matchDate: '2027-03-05 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '20. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'Hobro IK', matchDate: '2027-03-05 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '20. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'Vejle Boldklub', matchDate: '2027-03-06 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '20. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'FC Fredericia', matchDate: '2027-03-06 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '20. Runde', tournament: '1. Division', homeTeam: 'Vendsyssel FF', awayTeam: 'Kolding IF', matchDate: '2027-03-06 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '20. Runde', tournament: '1. Division', homeTeam: 'AB Gladsaxe', awayTeam: 'Hillerød Fodbold', matchDate: '2027-03-06 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 21. Runde
   { round: '21. Runde', tournament: '1. Division', homeTeam: 'Hobro IK', awayTeam: 'HB Køge', matchDate: '2027-03-13 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '21. Runde', tournament: '1. Division', homeTeam: 'Hvidovre IF', awayTeam: 'AB Gladsaxe', matchDate: '2027-03-13 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '21. Runde', tournament: '1. Division', homeTeam: 'Aarhus Fremad', awayTeam: 'Vendsyssel FF', matchDate: '2027-03-13 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '21. Runde', tournament: '1. Division', homeTeam: 'Vejle Boldklub', awayTeam: 'Kolding IF', matchDate: '2027-03-13 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '21. Runde', tournament: '1. Division', homeTeam: 'Esbjerg fB', awayTeam: 'Hillerød Fodbold', matchDate: '2027-03-13 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '21. Runde', tournament: '1. Division', homeTeam: 'FC Fredericia', awayTeam: 'AaB', matchDate: '2027-03-13 19:00', finalScore: false, homeScore: null, awayScore: null },
-
-  // 22. Runde
   { round: '22. Runde', tournament: '1. Division', homeTeam: 'AaB', awayTeam: 'Hvidovre IF', matchDate: '2027-03-20 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '22. Runde', tournament: '1. Division', homeTeam: 'Kolding IF', awayTeam: 'Aarhus Fremad', matchDate: '2027-03-20 19:00', finalScore: false, homeScore: null, awayScore: null },
   { round: '22. Runde', tournament: '1. Division', homeTeam: 'HB Køge', awayTeam: 'Esbjerg fB', matchDate: '2027-03-20 19:00', finalScore: false, homeScore: null, awayScore: null },
@@ -201,7 +157,6 @@ export default function AdminScreens() {
   const [showSyncReviewModal, setShowSyncReviewModal] = useState(false);
   const [detectedSyncChanges, setDetectedSyncChanges] = useState([]);
 
-  // States til hold-administration og ligaer
   const [editingTeamKey, setEditingTeamKey] = useState(null);
   const [editTeamDisplayName, setEditTeamDisplayName] = useState('');
   const [editTeamLeague, setEditTeamLeague] = useState('1. Division');
@@ -215,14 +170,12 @@ export default function AdminScreens() {
   const [newMatchData, setNewMatchData] = useState({ 
     homeTeam: 'AB Gladsaxe', 
     awayTeam: 'AaB', 
-    date: new Date(), 
+    dateStr: '2026-07-24', 
+    timeStr: '18:00', 
     round: '', 
     tournament: '1. Division', 
     alternativeStadium: '' 
   });
-  
-  const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
   
   const [expandedAdminRounds, setExpandedAdminRounds] = useState({});
   const toggleAdminRound = (roundName) => setExpandedAdminRounds(prev => ({ ...prev, [roundName]: !prev[roundName] }));
@@ -279,6 +232,32 @@ export default function AdminScreens() {
     const num = roundStr.replace(/\D/g, '');
     if (!num) return roundStr;
     return `${num}. Runde`;
+  };
+
+  // 100% robust fallback til at finde hjemmebane, uanset om dataen er overskrevet af customTeams.
+  const getStadiumForTeam = (teamName) => {
+    if (!teamName) return '';
+    const name = teamName.trim();
+    let stad = customTeams[name]?.stadium;
+    if (!stad || stad.trim() === '') stad = INITIAL_TEAM_DB[name]?.stadium;
+    
+    // Hardcoded safety net if customTeams completely overwrote the record empty
+    if (!stad || stad.trim() === '') {
+      const lower = name.toLowerCase();
+      if (lower.includes('aab') || lower.includes('aalborg')) return 'Aalborg Portland Park';
+      if (lower.includes('ab gladsaxe') || lower === 'ab' || lower.includes('akademisk')) return 'Gladsaxe Stadion';
+      if (lower.includes('hillerød')) return 'Right to Dream Park';
+      if (lower.includes('esbjerg') || lower === 'efb') return 'Blue Water Arena';
+      if (lower.includes('kolding')) return 'Autocentralen Park';
+      if (lower.includes('fredericia')) return 'Monjasa Park';
+      if (lower.includes('vendsyssel')) return 'Nord Energi Arena';
+      if (lower.includes('hobro')) return 'DS Arena';
+      if (lower.includes('hvidovre')) return 'Pro Ventilation Arena';
+      if (lower.includes('aarhus fremad')) return 'Riisvangen Stadion';
+      if (lower.includes('køge')) return 'Capelli Sport Stadion';
+      if (lower.includes('vejle')) return 'Vejle Stadion';
+    }
+    return stad || '';
   };
 
   if (currentScreen === 'adminHub') {
@@ -467,7 +446,7 @@ export default function AdminScreens() {
               title: `${official.round}: Manglende kamp (${official.homeTeam} vs ${official.awayTeam})`,
               description: `Findes i det officielle program for ${official.round}, men mangler i appen.`,
               action: async () => {
-                const defaultStad = TEAM_DB[official.homeTeam]?.stadium || null;
+                const defaultStad = getStadiumForTeam(official.homeTeam);
                 await db.collection('matches').add({
                   homeTeam: official.homeTeam,
                   awayTeam: official.awayTeam,
@@ -544,7 +523,7 @@ export default function AdminScreens() {
       let updates = [];
       
       for (let m of matchesList) {
-        const homeStadium = TEAM_DB[m.homeTeam]?.stadium;
+        const homeStadium = getStadiumForTeam(m.homeTeam);
         if (homeStadium && !m.alternativeStadium) {
           updates.push({ match: m, newStadium: homeStadium });
         }
@@ -661,8 +640,8 @@ export default function AdminScreens() {
 
         <TouchableOpacity style={[styles.secondaryButton, {backgroundColor: '#12352A', padding: 12, borderRadius: 8, marginBottom: 15}]} onPress={() => { 
           setEditingMatchId(null); 
-          const defaultStad = TEAM_DB['AB Gladsaxe']?.stadium || '';
-          setNewMatchData({ homeTeam: 'AB Gladsaxe', awayTeam: 'AaB', date: new Date(), round: '', tournament: '1. Division', alternativeStadium: defaultStad }); 
+          const defaultStad = getStadiumForTeam('AB Gladsaxe');
+          setNewMatchData({ homeTeam: 'AB Gladsaxe', awayTeam: 'AaB', dateStr: '2026-07-24', timeStr: '18:00', round: '', tournament: '1. Division', alternativeStadium: defaultStad }); 
           setShowAddMatchModal(true); 
         }}><Text style={{color: '#C5A059', fontWeight: 'bold'}}>➕ TILFØJ NY KAMP MANUELT</Text></TouchableOpacity>
 
@@ -683,11 +662,23 @@ export default function AdminScreens() {
                         <TouchableOpacity onPress={() => { 
                           setEditingMatchId(m.id); 
                           const matchDateObj = m.matchDate ? new Date(m.matchDate.replace(' ', 'T')) : new Date();
-                          const defaultStad = m.alternativeStadium || TEAM_DB[m.homeTeam]?.stadium || '';
+                          let dStr = '';
+                          let tStr = '';
+                          if (!isNaN(matchDateObj.getTime())) {
+                            const y = matchDateObj.getFullYear();
+                            const mo = String(matchDateObj.getMonth() + 1).padStart(2, '0');
+                            const d = String(matchDateObj.getDate()).padStart(2, '0');
+                            const h = String(matchDateObj.getHours()).padStart(2, '0');
+                            const min = String(matchDateObj.getMinutes()).padStart(2, '0');
+                            dStr = `${y}-${mo}-${d}`;
+                            tStr = `${h}:${min}`;
+                          }
+                          const defaultStad = m.alternativeStadium || getStadiumForTeam(m.homeTeam);
                           setNewMatchData({ 
                             homeTeam: m.homeTeam, 
                             awayTeam: m.awayTeam, 
-                            date: isNaN(matchDateObj.getTime()) ? new Date() : matchDateObj, 
+                            dateStr: dStr, 
+                            timeStr: tStr, 
                             round: m.round, 
                             tournament: m.tournament || '1. Division', 
                             alternativeStadium: defaultStad 
@@ -802,7 +793,7 @@ export default function AdminScreens() {
                         {Object.keys(TEAM_DB).filter(t => (TEAM_DB[t].league || '1. Division') === league).sort().map(team => (
                           <TouchableOpacity key={team} style={{padding: 15, borderBottomWidth: 1, borderColor: '#eee'}} onPress={() => { 
                             if(newMatchTeamSelector.type === 'home') {
-                              const defaultStad = TEAM_DB[team]?.stadium || newMatchData.alternativeStadium;
+                              const defaultStad = getStadiumForTeam(team);
                               setNewMatchData({...newMatchData, homeTeam: team, alternativeStadium: defaultStad});
                             } else {
                               setNewMatchData({...newMatchData, awayTeam: team});
@@ -827,48 +818,22 @@ export default function AdminScreens() {
                   
                   <View style={{flexDirection: 'row', gap: 10}}>
                     <View style={{flex: 1}}>
-                      <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Dato</Text>
-                      <TouchableOpacity style={styles.inputField} onPress={() => setShowDatePicker(true)}>
-                        <Text>{newMatchData.date.toLocaleDateString('da-DK', {day: '2-digit', month: '2-digit', year: 'numeric'}).replace(/\//g, '.')}</Text>
-                      </TouchableOpacity>
-                      {showDatePicker && (
-                        <DateTimePicker 
-                          value={newMatchData.date} 
-                          mode="date" 
-                          display="default" 
-                          onChange={(e, d) => { 
-                            setShowDatePicker(Platform.OS === 'ios'); 
-                            if (d) { 
-                              const c = newMatchData.date; 
-                              d.setHours(c.getHours()); 
-                              d.setMinutes(c.getMinutes()); 
-                              setNewMatchData({...newMatchData, date: d}); 
-                            } 
-                          }} 
-                        />
-                      )}
+                      <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Dato (ÅÅÅÅ-MM-DD)</Text>
+                      <TextInput 
+                        style={styles.inputField} 
+                        placeholder="f.eks. 2026-07-24" 
+                        value={newMatchData.dateStr} 
+                        onChangeText={v => setNewMatchData({...newMatchData, dateStr: v})} 
+                      />
                     </View>
                     <View style={{flex: 1}}>
-                      <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Tid</Text>
-                      <TouchableOpacity style={styles.inputField} onPress={() => setShowTimePicker(true)}>
-                        <Text>{newMatchData.date.toLocaleTimeString('da-DK', {hour: '2-digit', minute:'2-digit'})}</Text>
-                      </TouchableOpacity>
-                      {showTimePicker && (
-                        <DateTimePicker 
-                          value={newMatchData.date} 
-                          mode="time" 
-                          display="default" 
-                          onChange={(e, d) => { 
-                            setShowTimePicker(Platform.OS === 'ios'); 
-                            if (d) { 
-                              const n = new Date(newMatchData.date); 
-                              n.setHours(d.getHours()); 
-                              n.setMinutes(d.getMinutes()); 
-                              setNewMatchData({...newMatchData, date: n}); 
-                            } 
-                          }} 
-                        />
-                      )}
+                      <Text style={{fontWeight: 'bold', color: '#666', fontSize: 11, marginBottom: 4}}>Tid (HH:MM)</Text>
+                      <TextInput 
+                        style={styles.inputField} 
+                        placeholder="f.eks. 18:00" 
+                        value={newMatchData.timeStr} 
+                        onChangeText={v => setNewMatchData({...newMatchData, timeStr: v})} 
+                      />
                     </View>
                   </View>
 
@@ -898,12 +863,11 @@ export default function AdminScreens() {
 
                   <TouchableOpacity style={[styles.primaryButton, {width: '100%', marginBottom: 10, marginTop: 10}]} onPress={async () => {
                     if(!newMatchData.homeTeam || !newMatchData.awayTeam || !newMatchData.round) return showAlert("Fejl", "Udfyld alle felter!");
-                    const y = newMatchData.date.getFullYear(); 
-                    const m = String(newMatchData.date.getMonth() + 1).padStart(2, '0'); 
-                    const day = String(newMatchData.date.getDate()).padStart(2, '0'); 
-                    const h = String(newMatchData.date.getHours()).padStart(2, '0'); 
-                    const min = String(newMatchData.date.getMinutes()).padStart(2, '0');
-                    const finalDate = `${y}-${m}-${day} ${h}:${min}`;
+                    
+                    // Sørger for at folk ikke ubevidst crasher programmet hvis de laver punktummer
+                    let safeDate = newMatchData.dateStr.trim().replace(/\./g, '-');
+                    let safeTime = newMatchData.timeStr.trim().replace(/\./g, ':');
+                    const finalDate = `${safeDate} ${safeTime}`;
                     
                     if(editingMatchId) { 
                       await db.collection('matches').doc(editingMatchId).update({ 
