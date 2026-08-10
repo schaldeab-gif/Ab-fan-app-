@@ -244,6 +244,7 @@ export default function AdminScreens() {
   const [newRssUrl, setNewRssUrl] = useState('');
   const [newAwayMatchId, setNewAwayMatchId] = useState(null);
   const [newAwayInfoText, setNewAwayInfoText] = useState('');
+  const [editingAwayInfoId, setEditingAwayInfoId] = useState(null);
 
   const [newForumName, setNewForumName] = useState('');
   const [newForumDesc, setNewForumDesc] = useState('');
@@ -272,7 +273,6 @@ export default function AdminScreens() {
 
   const normalizeRoundName = (roundStr) => {
     if (!roundStr) return '';
-    // FIX: Rør ikke ved navnet, hvis det er en pokalkamp! Så ender den ikke i f.eks. "1. Runde".
     if (roundStr.toLowerCase().includes('pokal')) return roundStr;
 
     const num = roundStr.replace(/\D/g, '');
@@ -443,8 +443,6 @@ export default function AdminScreens() {
 
   if (currentScreen === 'adminMatches') {
     const leagues = [...new Set(Object.keys(TEAM_DB).map(t => TEAM_DB[t].league || '1. Division'))].sort();
-    
-    // Her samler vi alle kampe, som har samme runde, ind i grupper.
     const adminMatchesByRound = matchesList.reduce((acc, match) => { 
       const round = normalizeRoundName(match.round) || 'Ukendt'; 
       if (!acc[round]) acc[round] = []; 
@@ -452,8 +450,6 @@ export default function AdminScreens() {
       return acc; 
     }, {});
     
-    // FIX: Ny smart sorteringsmekanisme der sørger for at Pokalkampe ikke roder rundt, 
-    // men lægger sig pænt under f.eks. "1. Runde" -> "Pokalrunde 1".
     const sortedAdminRounds = Object.keys(adminMatchesByRound).sort((a, b) => {
       const numA = parseInt(a.replace(/\D/g, ''), 10) || 0;
       const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
@@ -926,7 +922,6 @@ export default function AdminScreens() {
                   <TouchableOpacity style={[styles.primaryButton, {width: '100%', marginBottom: 10, marginTop: 10}]} onPress={async () => {
                     if(!newMatchData.homeTeam || !newMatchData.awayTeam || !newMatchData.round) return showAlert("Fejl", "Udfyld alle felter!");
                     
-                    // Sørger for at folk ikke ubevidst crasher programmet hvis de laver punktummer
                     let safeDate = newMatchData.dateStr.trim().replace(/\./g, '-');
                     let safeTime = newMatchData.timeStr.trim().replace(/\./g, ':');
                     const finalDate = `${safeDate} ${safeTime}`;
@@ -1271,11 +1266,11 @@ export default function AdminScreens() {
     return (
       <ScrollView contentContainerStyle={styles.loginScreenContainer}>
         <TouchableOpacity onPress={() => setCurrentScreen('adminHub')} style={styles.backButton}><Text style={styles.backButtonText}>← TILBAGE</Text></TouchableOpacity>
-        <Text style={styles.loginHeader}>🚌 AWAY INFO</Text>
+        <Text style={styles.loginHeader}>{editingAwayInfoId ? 'RET AWAY INFO' : '🚌 AWAY INFO'}</Text>
         <View style={{backgroundColor: '#FFFFFF', padding: 15, borderRadius: 10, marginBottom: 20, borderWidth: 1, borderColor: '#C5A059'}}>
           <Text style={{fontWeight: 'bold', marginBottom: 10}}>Vælg Udekamp:</Text>
           <ScrollView style={{maxHeight: 150, marginBottom: 15, borderWidth: 1, borderColor: '#E5E5DF', borderRadius: 8}}>
-            {matchesList.filter(m => m.awayTeam === 'AB' && !m.finalScore).map(m => (
+            {matchesList.filter(m => m.awayTeam === 'AB' && (!m.finalScore || m.id === newAwayMatchId)).map(m => (
               <TouchableOpacity key={m.id} onPress={() => setNewAwayMatchId(m.id)} style={{padding: 10, backgroundColor: newAwayMatchId === m.id ? '#12352A' : '#fff', borderBottomWidth: 1, borderBottomColor: '#eee'}}>
                 <Text style={{color: newAwayMatchId === m.id ? '#C5A059' : '#111', fontWeight: newAwayMatchId === m.id ? 'bold' : 'normal'}}>{m.homeTeam} (Runde: {m.round})</Text>
               </TouchableOpacity>
@@ -1285,16 +1280,35 @@ export default function AdminScreens() {
           <TouchableOpacity style={styles.primaryButton} onPress={async () => {
             if (!newAwayMatchId || !newAwayInfoText.trim()) return showAlert("Fejl", "Vælg kamp og skriv info.");
             const targetMatch = matchesList.find(m => m.id === newAwayMatchId);
-            if (!targetMatch) return showAlert("Fejl", "Kampen blev ikke fundet.");
+            if (!targetMatch && !editingAwayInfoId) return showAlert("Fejl", "Kampen blev ikke fundet.");
             
-            await db.collection('away_info').add({ 
-              matchId: newAwayMatchId, 
-              opponent: targetMatch.homeTeam,
-              infoText: newAwayInfoText,
-              createdAt: firebase.firestore.FieldValue.serverTimestamp()
-            });
-            setNewAwayMatchId(null); setNewAwayInfoText(''); showAlert("Succes", "Away Info gemt!");
-          }}><Text style={styles.primaryButtonText}>GEM AWAY INFO</Text></TouchableOpacity>
+            if (editingAwayInfoId) {
+                await db.collection('away_info').doc(editingAwayInfoId).update({
+                    matchId: newAwayMatchId,
+                    opponent: targetMatch ? targetMatch.homeTeam : null,
+                    infoText: newAwayInfoText,
+                    updatedAt: Date.now()
+                });
+                setEditingAwayInfoId(null); setNewAwayMatchId(null); setNewAwayInfoText(''); 
+                showAlert("Succes", "Away Info opdateret!");
+            } else {
+                await db.collection('away_info').add({ 
+                  matchId: newAwayMatchId, 
+                  opponent: targetMatch.homeTeam,
+                  infoText: newAwayInfoText,
+                  createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                  updatedAt: Date.now()
+                });
+                setNewAwayMatchId(null); setNewAwayInfoText(''); 
+                showAlert("Succes", "Away Info gemt!");
+            }
+          }}><Text style={styles.primaryButtonText}>{editingAwayInfoId ? 'OPDATER AWAY INFO' : 'GEM AWAY INFO'}</Text></TouchableOpacity>
+
+          {editingAwayInfoId && (
+              <TouchableOpacity style={[styles.secondaryButton, {marginTop: 10}]} onPress={() => { setEditingAwayInfoId(null); setNewAwayMatchId(null); setNewAwayInfoText(''); }}>
+                  <Text style={{color: '#8A1C1C'}}>ANNULLER REDIGERING</Text>
+              </TouchableOpacity>
+          )}
         </View>
         <Text style={styles.sectionTitle}>Eksisterende Info</Text>
         {awayInfoList.map(info => {
@@ -1304,6 +1318,11 @@ export default function AdminScreens() {
               <Text style={{fontWeight: 'bold', color: '#12352A', marginBottom: 5}}>{match ? `${match.homeTeam} vs AB` : (info.opponent ? `${info.opponent} vs AB` : 'Udebane')}</Text>
               <Text style={{fontSize: 12, color: '#333', marginBottom: 10}} numberOfLines={2}>{info.infoText}</Text>
               <View style={{flexDirection: 'row', justifyContent: 'flex-end'}}>
+                <TouchableOpacity onPress={() => {
+                    setEditingAwayInfoId(info.id);
+                    setNewAwayMatchId(info.matchId);
+                    setNewAwayInfoText(info.infoText);
+                }} style={{backgroundColor: '#C5A059', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 4, marginRight: 10}}><Text style={{color: '#111', fontSize: 10, fontWeight: 'bold'}}>REDIGER</Text></TouchableOpacity>
                 <TouchableOpacity onPress={() => Alert.alert("Slet", "Slet away info?", [{text: "Annuller"}, {text: "Slet", style: "destructive", onPress: async () => await db.collection('away_info').doc(info.id).delete()}])} style={styles.deleteBtn}><Text style={{color: '#fff', fontSize: 10, fontWeight: 'bold'}}>SLET</Text></TouchableOpacity>
               </View>
             </View>
